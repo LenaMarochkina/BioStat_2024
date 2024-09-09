@@ -81,4 +81,3 @@ table(categorical_data$Группа, categorical_data$`Группа крови`)
 
 # Print relative frequencies for categorical data
 prop.table(table(categorical_data$Группа, categorical_data$`Группа крови`))
-
