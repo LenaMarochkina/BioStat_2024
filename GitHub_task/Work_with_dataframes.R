@@ -275,4 +275,40 @@ tibble(var_1 = rep(paste0("first part", "__", "second_part"), 10)) %>%
   separate(var_1, into = c("var_1", "var_2"), sep = "__") %>%
   unite("new_var", var_1, var_2, sep = " AND ")
 
+# Create statistical tables
+data %>%
+  select(`Группа`, where(is.numeric)) %>%
+  group_by(`Группа`) %>%
+  summarise(across(where(is.numeric), function(x) mean(x, na.rm = TRUE)))
 
+# Table for numerical variables
+statistics <- list(
+  `Количество субъектов` = ~as.character(length(.x)),
+  `Количество (есть данные)` = ~as.character(sum(!is.na(.x))),
+  `Нет данных` = ~as.character(sum(is.na(.x))),
+  `Ср. знач.` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", as.character(mean(.x, na.rm = TRUE) %>% round(2))),
+  `Станд. отклон.` = ~ifelse(sum(!is.na(.x)) < 3, "Н/П*", as.character(sd(.x, na.rm = TRUE) %>% round(2))),
+  `95% ДИ для среднего` = ~ifelse(sum(!is.na(.x)) < 3, "Н/П*", as.character(sd(.x, na.rm = TRUE) %>% round(2))),
+  `мин. - макс.` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", paste0(as.character(min(.x, na.rm = TRUE) %>% round(2)), " - ", as.character(max(.x, na.rm = TRUE) %>% round(2)))),
+  `Медиана` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", as.character(median(.x, na.rm = TRUE) %>% round(2))),
+  `Q1 - Q3` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", paste0(as.character(quantile(.x, 0.25, na.rm = TRUE) %>% round(2)), " - ", as.character(quantile(.x, 0.75, na.rm = TRUE) %>% round(2))))
+)
+
+data %>%
+  select(`Группа`, where(is.numeric)) %>%
+  group_by(`Группа`) %>%
+  summarise(across(where(is.numeric), statistics)) %>%
+  pivot_longer(!`Группа`, names_sep = "_", names_to = c("Переменная", "Статистика")) %>%
+  rename(`Значение` = value)
+
+# Table for categorical variables
+data %>%
+  select(`Группа`, where(is.factor)) %>%
+  mutate(`Группа.крови` = `Группа.крови` %>% as.character() %>% replace_na("Нет данных") %>% as.factor()) %>%
+  count(`Группа`, `Группа.крови`) %>%
+  group_by(`Группа`) %>%
+  mutate(`Процент по группе` = (n / sum(n)) %>% round(4) %>% `*` (100) %>% str_c("%")) %>%
+  ungroup() %>%
+  mutate(`Процент по выборке` = (n / sum(n)) %>% round(4) %>% `*` (100) %>% str_c("%"))
+
+y

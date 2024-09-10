@@ -10,7 +10,7 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE)
 library(readr)
 library(readxl)
 library(dplyr)
@@ -18,6 +18,8 @@ library(psych)
 library(tibble)
 library(tidyr)
 library(stringi)
+library(stringr)
+library(flextable)
 ```
 
 \newpage
@@ -201,6 +203,7 @@ data <- data %>%
 
 ### Add numeration
 ```{r}
+data <- read.csv("data/raw/data_csv.csv", stringsAsFactors = TRUE)
 data %>%
   mutate(ID = row_number())
 ```
@@ -502,4 +505,119 @@ tibble(var_1 = rep(paste0("first part", "__", "second_part"), 10)) %>%
 tibble(var_1 = rep(paste0("first part", "__", "second_part"), 10)) %>% 
   separate(var_1, into = c("var_1", "var_2"), sep = "__") %>%
   unite("new_var", var_1, var_2, sep = " AND ")
+```
+## Create statistical tables
+```{r}
+data <- read.csv("data/raw/data_csv.csv", stringsAsFactors = TRUE)
+data %>%
+  select(`Группа`, where(is.numeric)) %>%
+  group_by(`Группа`) %>%
+  summarise(across(where(is.numeric), function(x) mean(x, na.rm = TRUE)))
+```
+
+### Table for numerical variables
+```{r}
+statistics <- list(
+  `_Количество субъектов` = ~as.character(length(.x)),
+  `_Количество (есть данные)` = ~as.character(sum(!is.na(.x))),
+  `_Нет данных` = ~as.character(sum(is.na(.x))),
+  `_Ср. знач.` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", as.character(mean(.x, na.rm = TRUE) %>% round(2))),
+  `_Станд. отклон.` = ~ifelse(sum(!is.na(.x)) < 3, "Н/П*", as.character(sd(.x, na.rm = TRUE) %>% round(2))),
+  `_95% ДИ для среднего` = ~ifelse(sum(!is.na(.x)) < 3, "Н/П*", as.character(sd(.x, na.rm = TRUE) %>% round(2))),
+  `_мин. - макс.` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", paste0(as.character(min(.x, na.rm = TRUE) %>% round(2)), " - ", as.character(max(.x, na.rm = TRUE) %>% round(2)))),
+  `_Медиана` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", as.character(median(.x, na.rm = TRUE) %>% round(2))),
+  `_Q1 - Q3` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", paste0(as.character(quantile(.x, 0.25, na.rm = TRUE) %>% round(2)), " - ", as.character(quantile(.x, 0.75, na.rm = TRUE) %>% round(2))))
+)
+data %>%
+  select(`Группа`, where(is.numeric)) %>%
+  group_by(`Группа`) %>%
+  summarise(across(where(is.numeric), statistics)) %>%
+  pivot_longer(!`Группа`, names_sep = "__", names_to = c("Переменная", "Статистика")) %>%
+  rename(`Значение` = value)
+```
+
+### Table for categorical variables
+```{r}
+data %>%
+  select(`Группа`, where(is.factor)) %>%
+  mutate(`Группа.крови` = `Группа.крови` %>% as.character() %>% replace_na("Нет данных") %>% as.factor()) %>%
+  count(`Группа`, `Группа.крови`) %>%
+  group_by(`Группа`) %>%
+  mutate(`Процент по группе` = (n / sum(n)) %>% round(4) %>% `*` (100) %>% str_c("%")) %>%
+  ungroup() %>%
+  mutate(`Процент по выборке` = (n / sum(n)) %>% round(4) %>% `*` (100) %>% str_c("%")) %>%
+```
+
+### FlexTable
+
+```{r}
+statistics <- list(
+  `_Количество субъектов` = ~as.character(length(.x)),
+  `_Количество (есть данные)` = ~as.character(sum(!is.na(.x))),
+  `_Нет данных` = ~as.character(sum(is.na(.x))),
+  `_Ср. знач.` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", as.character(mean(.x, na.rm = TRUE) %>% round(2))),
+  `_Станд. отклон.` = ~ifelse(sum(!is.na(.x)) < 3, "Н/П*", as.character(sd(.x, na.rm = TRUE) %>% round(2))),
+  `_95% ДИ для среднего` = ~ifelse(sum(!is.na(.x)) < 3, "Н/П*", as.character(sd(.x, na.rm = TRUE) %>% round(2))),
+  `_мин. - макс.` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", paste0(as.character(min(.x, na.rm = TRUE) %>% round(2)), " - ", as.character(max(.x, na.rm = TRUE) %>% round(2)))),
+  `_Медиана` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", as.character(median(.x, na.rm = TRUE) %>% round(2))),
+  `_Q1 - Q3` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", paste0(as.character(quantile(.x, 0.25, na.rm = TRUE) %>% round(2)), " - ", as.character(quantile(.x, 0.75, na.rm = TRUE) %>% round(2))))
+)
+data %>%
+  select(`Группа`, where(is.numeric)) %>%
+  group_by(`Группа`) %>%
+  summarise(across(where(is.numeric), statistics)) %>%
+  pivot_longer(!`Группа`, names_sep = "__", names_to = c("Переменная", "Статистика")) %>%
+  rename(`Значение` = value) %>%
+  flextable() %>%
+  theme_zebra() %>%
+  merge_v(c("Группа", "Переменная"))
+```
+#### Merge
+```{r}
+tibble(var_1 = c("p-value", "0.001"), var_2 = c("p-value", "0.05")) %>%
+      flextable() %>%
+      theme_box() %>%
+      merge_h(i = 1)
+```
+#### Align
+```{r}
+tibble(`Adverse events` = c("SOC Желудочно-кишечные нарушения 10017947", "PT Тошнота 10028813", "SOC Нарушения со стороны нервной системы 10029205", "PT Головная боль 10019211")) %>%
+      flextable() %>%
+      theme_box() %>%
+      align(align = "center", part = "all")
+```
+
+#### Bold and italic
+```{r}
+tibble(`Adverse events` = c("SOC Желудочно-кишечные нарушения 10017947", "PT Тошнота 10028813", "SOC Нарушения со стороны нервной системы 10029205", "PT Головная боль 10019211")) %>%
+      flextable() %>%
+      theme_box() %>%
+      align(i =~ str_detect(`Adverse events`, "SOC"), align = "left") %>%
+      align(i =~ str_detect(`Adverse events`, "PT"), align = "right") %>%
+      
+      bold(i =~ str_detect(`Adverse events`, "SOC")) %>%
+      italic(i =~ str_detect(`Adverse events`, "PT")) %>%
+  
+      width(width = 2)
+```
+#### Coloring
+```{r}
+is_pvalue <- function(x) {
+  x %>% str_remove("<") %>% as.numeric() %>% `<`(0.05)
+}
+
+tibble("p-value" = c("<0.001", "0.38", "0.124", "0.005", "0.05")) %>%
+  flextable() %>%
+  theme_box() %>%
+  color(i =~ is_pvalue(`p-value`), color = "green")
+```
+```{r}
+is_pvalue <- function(x) {
+  x %>% str_remove("<") %>% as.numeric() %>% `<`(0.05)
+}
+
+tibble("p-value" = c("<0.001", "0.38", "0.124", "0.005", "0.05")) %>%
+  flextable() %>%
+  theme_box() %>%
+  bg(i =~ is_pvalue(`p-value`), bg = "green")
 ```
