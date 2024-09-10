@@ -1,5 +1,5 @@
 ---
-title: "GitHub_task"
+title: "GitHub Task"
 subtitle: "Biostatistics course: 1st task"
 author: "Elena Marochkina"
 date: "`r Sys.Date()`"
@@ -7,29 +7,144 @@ output:
   word_document: 
     toc: yes
     toc_depth: 3
-  toc-title: "Оглавление"
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(readxl)
+library(dplyr)
+library(psych)
 ```
 
-## R Markdown
+\newpage
+## How to read and write data?
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+1. Read data from tsv file
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+```{r}
+data_tsv <- read_delim("data/raw/data_tsv.tsv", delim = "\t", n_max = Inf)
+```
+2. Read data from tsv file and write data to csv file
+```{r}
+data_tsv2 <- read_tsv("data/raw/data_tsv.tsv", skip = 0, n_max = Inf)
+write_excel_csv(data_tsv2, "data/raw/data_csv.csv")
 ```
 
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
+3. Read data from csv file with , separator and write data to csv file with ; separator
+```{r}
+data_csv1 <- read_csv("data/raw/data_csv.csv")
+write_csv2(data_csv1, "data/raw/data_csv2.csv")
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+4. Check if data doesn't change after format change
+```{r}
+isMatch <- all.equal(data_csv1, data_tsv2)
+print(isMatch)
+```
+
+5. Read data from csv file with ; separator
+```{r}
+data_csv2 <- read_csv2("data/raw/data_csv2.csv")
+```
+
+6. Read data from excel file
+```{r}
+data_excel <- read_excel("data/raw/data_excel.xlsx", sheet = "data_csv2")
+```
+
+7. Write data in rds file
+```{r}
+write_rds(data_tsv2, "data/raw/data_rds.rds")
+```
+
+8. Read data from rds file
+```{r}
+data_rds <- read_rds("data/raw/data_rds.rds")
+```
+
+\newpage
+## How to calculate and summarize basic statistics?
+
+1. Mean calculation
+```{r}
+mean1 <- mean(c(1, -1, 5, -12, -12, 3, 8, -10, 0), trim = 0, na.rm = FALSE)
+mean2 <- mean(c(-13, 19, -24, NA, 30, 64, -53, NA, 50, 31, -58, -34, -3, -34, 77), trim = 0, na.rm = TRUE)
+```
+
+2. Median calculation
+```{r}
+median1 <- median(c(1, 9, NA, 88, 2, NA, 42, NA, 4, 68, NA), na.rm = TRUE)
+median2 <- median(c(-91, -33, 13, 34, 34, 75, -80, -35, -90, -72, 70, 67, -100, -94, -18), na.rm = FALSE)
+```
+
+3. Min max calculation
+```{r}
+arr1 <- c(48.11, 45.3, 58.42, 51.64, 62.07, 57.26, 49.69, 93.29, 81.18, 44.78, 55.1, 76.74, 58.08)
+min <- min(arr1, na.rm = FALSE)
+max <- max(arr1, na.rm = FALSE)
+```
+
+4. Quantile calculation
+```{r}
+quant1 <- quantile(c(80.94, 44.46, 46.33, 65.1, 66.42, 104.43, 53.15, 48.41, 12.88, 51.1, 43.03, 40.3, 33.71, 55.1, 22.17), probs = seq(0, 1, 0.25), na.rm = FALSE, names = TRUE, type =7)
+quant2 <- quantile(c(26.17, 97.73, 24.81, 53.62, 87.72, 45.19, 45.7, 69.63, 36.76, 7.17), probs = seq(0, 1, 0.5))
+```
+
+5. Dispersion and SD calculation
+```{r}
+arr2 <- c(76.22, 65, 19.69, 29.84, 37.18, 70.93, 64.78, 61.66, 49.03, 51.56)
+var <- var(arr2, na.rm = FALSE)
+sd <- sd(arr2, na.rm = FALSE)
+```
+
+6. IQR calculation
+```{r}
+arr3 <- c(63.92, 35.85, 26.9, 48.92, 43.1, 66.94, 47.06, 56.54, 29.1, 58.88)
+iqr <- IQR(arr3, na.rm = FALSE, type = 7)
+```
+
+7. Array length calculation
+```{r}
+len <- length(arr1)
+len1 <- sum(!is.na(arr3))
+```
+
+8. Standard error of the mean calculation
+```{r}
+SEM <- function(x){
+  result = sd(x) / sqrt(sum(!is.na(x)))
+  return(result)
+}
+x <- c(76.22, 65, 19.69, 29.84, 37.18, 70.93, 64.78, 61.66, 49.03, 51.56)
+SEM(x)
+```
+
+9. Convert categorical variables to factors
+```{r}
+data_tsv$Группа <- as.factor(data_tsv$Группа)
+data_tsv$Пол <- as.factor(data_tsv$Пол)
+```
+
+10. Print summary of base statistics
+```{r}
+sum <- summary(data_tsv)
+print(sum)
+```
+
+11. Print summary of base statistics for numeric data (second method). Psych packet
+```{r}
+numeric_data <- read_rds("data/raw/numeric_data.rds")
+describe(numeric_data, na.rm = TRUE, skew = FALSE, ranges = TRUE)
+```
+
+12. Print summary of base statistics for categorical data (second method)
+```{r}
+categorical_data <- read_rds("data/raw/factor_data.rds")
+table(categorical_data$Группа, categorical_data$`Группа крови`)
+```
+
+13. Print relative frequencies for categorical data
+```{r}
+prop.table(table(categorical_data$Группа, categorical_data$`Группа крови`))
+```
