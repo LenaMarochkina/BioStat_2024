@@ -6,7 +6,7 @@ date: "`r Sys.Date()`"
 output:
   word_document: 
     toc: yes
-    toc_depth: 3
+    toc_depth: 4
 ---
 
 ```{r setup, include=FALSE}
@@ -15,10 +15,11 @@ library(readr)
 library(readxl)
 library(dplyr)
 library(psych)
+library(tibble)
 ```
 
 \newpage
-## How to read and write data?
+# How to read and write data?
 
 1. Read data from tsv file
 
@@ -64,7 +65,7 @@ data_rds <- read_rds("data/raw/data_rds.rds")
 ```
 
 \newpage
-## How to calculate and summarize basic statistics?
+# How to calculate and summarize basic statistics?
 
 1. Mean calculation
 ```{r}
@@ -147,4 +148,222 @@ table(categorical_data$Группа, categorical_data$`Группа крови`)
 13. Print relative frequencies for categorical data
 ```{r}
 prop.table(table(categorical_data$Группа, categorical_data$`Группа крови`))
+```
+
+\newpage
+# How to work with Data Frames?
+## Tibble package 
+Get data: to read strings as factors must to use stringsAsFactors = TRUE 
+```{r}
+data <- read.csv("data/raw/data_csv.csv", stringsAsFactors = TRUE)
+```
+
+### Learning pipe
+```{r}
+data %>%
+  select(., `Группа`, `Рост`, contains("E1")) %>%
+  filter(., `Группа` == "Группа 1") %>%
+  slice(., 1:10) %>%
+  mutate(., `Рост` = `Рост` / 10)
+```
+
+### Variables access using tibble
+```{r}
+data$Группа
+data$`Группа крови`
+```
+
+### Create variables using tibble
+```{r}
+tibble(var_first = 1:10, var_second = ifelse(var_first < 5, var_first + 100, var_first))
+tibble(`var 1` = 1:10, `var 2` = `var 1` * 100)
+```
+
+### Data view in table format
+```{r}
+data %>% View()
+```
+
+### Add column or row
+1. Add column
+```{r}
+data <- data %>%
+  add_column(newHeight = data$`Рост` / 10, .after = Inf)
+```
+
+2. Add ow
+```{r}
+data <- data %>%
+  add_row(`Группа` = "New_group", `Возраст` = 50, .before = 1)
+```
+
+### Add numeration
+```{r}
+data %>%
+  mutate(ID = row_number())
+```
+
+## Binding
+### Binding columns or rows
+1. Binding columns
+```{r}
+data_1 <- tibble(ID_num = 1:10, Group = rep(c("placebo", "active"), 5))
+data_2 <- tibble(random = rbeta(10, 3, 5), norm = rnorm(10))
+data_3 <- tibble(Age = 100:91, Drugs = rep(c("omeprazole", "aspirin"), 5))
+data_1 %>% bind_cols(data_2) %>% bind_cols(data_3)
+```
+
+2. Binding rows
+```{r}
+data_1 <- tibble(ID_num = 1, group = "active", test_res = "positive")
+data_2 <- tibble(ID_num = 2, group = "placebo", test_res = "positive")
+data_3 <- tibble(ID_num = 3, group = "placebo", test_res = "negative")
+data_4 <- tibble(ID_num = 4, group = "active", test_res = "positive")
+
+data_1 %>% bind_rows(data_2) %>% bind_rows(data_3) %>% bind_rows(data_4)
+```
+
+### Join table
+```{r}
+data_1 <- tibble(var_1 = 1:8) %>% mutate(id = row_number())
+data_2 <- tibble(var_2 = rnorm(10)) %>% mutate(`Subject ID` = row_number())
+
+data_1 %>%
+  left_join(data_2, by = c("id" = "Subject ID"))
+```
+```{r}
+data_1 %>%
+  right_join(data_2, by = c("id" = "Subject ID"))
+```
+```{r}
+data_1 %>%
+  inner_join(data_2, by = c("id" = "Subject ID"))
+```
+```{r}
+data_1 %>%
+  full_join(data_2, by = c("id" = "Subject ID"))
+```
+
+## Group data
+### Group by column or raw
+1. Group by column
+```{r}
+data %>% group_by("Группа")
+```
+
+2. Group by row
+```{r}
+data %>% 
+  rowwise() %>%
+  mutate(`Average_hemoglobin` = mean(c(`Гемоглобин_E1`, `Гемоглобин_E2`))) %>%
+  ungroup() %>%
+  select(`Гемоглобин_E1`, `Гемоглобин_E2`, `Average_hemoglobin`)
+```
+
+### Divide data frame by values
+```{r}
+data %>% split("Группа")
+```
+## Select
+### Select columns
+```{r}
+data %>%
+  select(`Группа.крови`, `Рост`)
+```
+
+```{r
+}data %>% 
+  select(!`Рост` & !`Пол`)
+```
+
+```{r}
+data %>%
+  select(where(is.numeric))
+```
+
+```{r}
+data %>%
+  select(where(is.factor))
+```
+
+```{r}
+data %>% 
+  select(`Группа`, (function(x) is.factor(x)) | where(function(x) is.numeric(x)))
+```
+
+#### Select data by visit 
+```{r}
+data %>%
+  select(contains("_E1"))
+```
+
+```{r}
+data %>%
+  select(matches("_E\\d{1}"))
+```
+
+```{r}
+data %>%
+  select(starts_with("Б"))
+```
+
+#### Select strictly
+```{r}
+var <- c("Базофилы_E1", "Базофилы_E2", "Гемоглобин_E1")
+
+data %>% 
+  select(all_of(var))
+```
+
+#### Select gentle
+```{r}
+data %>%
+  select(any_of(var))
+```
+
+#### Conditional select - AND, OR, NEG
+```{r}
+data %>%
+  select(where(is.numeric)) %>%
+  select(where(function(x) sd(x, na.rm = TRUE) > 2 & mean(x, na.rm = TRUE) < 10))
+```
+```{r}
+data %>%
+  select(where(is.numeric)) %>%
+  select(where(function(x) sd(x, na.rm = TRUE) > 2 | mean(x, na.rm = TRUE) < 10 | median(x, na.rm = TRUE) > 5))
+```
+```{r}
+data %>%
+  select(!where(is.numeric))
+```
+#### Select other columns 
+```{r}
+data %>% 
+  select(`Пол`, `Эритроциты_E1`, everything())
+```
+#### Select and change names
+```{r}
+data %>%
+  select("Erythrocytes_V1" = `Эритроциты_E1`, "Erythrocytes_V2" = `Эритроциты_E2`)
+```
+### Select raws
+```{r}
+data %>%
+  slice(1:10)
+```
+```{r}
+data %>%
+  slice_head(n = 10)
+```
+```{r}
+data %>%
+  slice_tail(prop = 0.2)
+```
+```{r}
+data %>%
+  slice_sample(prop = 0.1)
+```
+```{r}
+data %>%
+  slice_min(`Возраст`)
 ```
