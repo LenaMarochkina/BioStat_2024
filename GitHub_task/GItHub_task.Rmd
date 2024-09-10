@@ -545,7 +545,7 @@ data %>%
   group_by(`Группа`) %>%
   mutate(`Процент по группе` = (n / sum(n)) %>% round(4) %>% `*` (100) %>% str_c("%")) %>%
   ungroup() %>%
-  mutate(`Процент по выборке` = (n / sum(n)) %>% round(4) %>% `*` (100) %>% str_c("%")) %>%
+  mutate(`Процент по выборке` = (n / sum(n)) %>% round(4) %>% `*` (100) %>% str_c("%"))
 ```
 
 ### FlexTable
@@ -570,7 +570,8 @@ data %>%
   rename(`Значение` = value) %>%
   flextable() %>%
   theme_zebra() %>%
-  merge_v(c("Группа", "Переменная"))
+  merge_v(c("Группа", "Переменная")) %>%
+  width(width = 2)
 ```
 #### Merge
 ```{r}
@@ -584,7 +585,8 @@ tibble(var_1 = c("p-value", "0.001"), var_2 = c("p-value", "0.05")) %>%
 tibble(`Adverse events` = c("SOC Желудочно-кишечные нарушения 10017947", "PT Тошнота 10028813", "SOC Нарушения со стороны нервной системы 10029205", "PT Головная боль 10019211")) %>%
       flextable() %>%
       theme_box() %>%
-      align(align = "center", part = "all")
+      align(align = "center", part = "all") %>%
+      width(width = 6)
 ```
 
 #### Bold and italic
@@ -621,3 +623,4 @@ tibble("p-value" = c("<0.001", "0.38", "0.124", "0.005", "0.05")) %>%
   theme_box() %>%
   bg(i =~ is_pvalue(`p-value`), bg = "green")
 ```
+
