@@ -1,0 +1,146 @@
+---
+title: "HW_morbidity_measures"
+author: "Elena Marochkina"
+date: "2024-09-15"
+output:
+  word_document: 
+    toc: yes
+    toc_depth: 1
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(dplyr)
+library(glue)
+```
+\newpage
+# Read Data
+
+```{r}
+data <- read_csv("data/carrental.csv")
+glimpse(data)
+
+```
+
+# Calculate prevalence for experience
+**Prevalence** is the number of people in the sample with the characteristic of interest (experience), divided by the total number of people in the sample.
+```{r}
+calculate_prevalence <- function(data, experience_flag) {
+  prevalence <- data %>%
+  summarize(
+    prevalence_all = n(),
+    prevalence = sum(experience == experience_flag)
+  ) %>%
+  mutate(prevalence = prevalence / prevalence_all) %>%
+  pull(prevalence)
+}
+
+prevalence_experienced <- calculate_prevalence(data, 1)
+prevalence_not_experienced <- calculate_prevalence(data, 0)
+
+print(paste("Prevalence for experienced drivers is equal to", prevalence_experienced))
+print(paste("Prevalence for non-experienced drivers is equal to", prevalence_not_experienced))
+
+
+```
+# Calculate incidence proportion(risk) of accident
+
+**Risk** is the number of events (good or bad) in a treated (exposed) or control (nonexposed) group, divided by the number of people in that group.
+
+```{r}
+risk_calculation <- function(data, general_flag, experience_flag) {
+  if (general_flag == TRUE) {
+    # Calculate risk for the entire dataset
+    risk_summary <- data %>%
+      summarize(
+        risk_all = n(),
+        accident_count = sum(accident == 1)
+      )
+  } else {
+    # Calculate risk for filtered data based on experience_flag
+    risk_summary <- data %>%
+      filter(experience == experience_flag) %>%
+      summarize(
+        risk_all = n(),
+        accident_count = sum(accident == 1)
+      )
+  }
+
+  risk_summary <- risk_summary %>%
+    mutate(risk = (accident_count / risk_all) * 100)
+
+  risk_value <- risk_summary$risk
+
+  return(risk_value)
+}
+
+risk_general <- risk_calculation(data, TRUE, 0)
+risk_experienced <- risk_calculation(data, FALSE, 1)
+risk_not_experienced <- risk_calculation(data, FALSE, 0)
+
+print(paste("Incidence proportion(Risk) for all drivers is equal to", risk_general, paste("%")))
+print(paste("Incidence proportion(Risk) for experienced drivers is equal to", risk_experienced, paste("%")))
+print(paste("Incidence proportion(Risk) for non-experienced drivers is equal to", risk_not_experienced, paste("%")))
+```
+# Calculate incidence rate of accident
+
+**Incidence rate** is the ratio of the number of cases to the total time the population is at risk of disease.
+
+```{r}
+
+incidence_rate_calculation <- function(data, experience_flag = NA) {
+  # Filter the data if experience_flag is provided
+  if (!is.na(experience_flag)) {
+    data <- data %>%
+      filter(experience == experience_flag)
+  }
+  
+  # Calculate observation time and incidence rate
+  incidence_summary <- data %>%
+    mutate(observation_time = stop - start) %>%
+    summarize(
+      total_observation_time = sum(observation_time),
+      accident_count = sum(accident == 1)
+    ) %>%
+    mutate(incidence_rate = accident_count / total_observation_time)
+  
+  incidence_rate <- incidence_summary$incidence_rate
+  return(incidence_rate)
+}
+
+# Example usage:
+incidence_rate_general <- incidence_rate_calculation(data)
+incidence_rate_experienced <- incidence_rate_calculation(data, 1)
+incidence_rate_not_experienced <- incidence_rate_calculation(data, 0)
+
+  
+print(paste("Incidence rate for all drivers is equal to", incidence_rate_general))
+print(paste("Incidence rate for experienced drivers is equal to", incidence_rate_experienced))
+print(paste("Incidence rate for non-experienced drivers is equal to", incidence_rate_not_experienced))
+```
+\newpage
+# Summarise results and add logical explanation
+
+## Results
+
+1. Prevalence for experience is equal to **0.32**
+
+2. Incidence proportion(Risk) for all drivers is equal to **22 %**
+
+3. Incidence proportion(Risk) for experienced drivers is equal to **9.375 %**
+
+4. Incidence proportion(Risk) for non-experienced drivers is equal to **27.9411764705882 %**
+
+5. Incidence rate for all drivers is equal to **0.00304624757684852**
+
+6. Incidence rate for experienced drivers is equal to **0.00317796610169492**
+
+7. Incidence rate for non-experienced drivers is equal to **0.00302644154189232**
+
+## Overall Interpretation
+1. **Prevalence** tells us that only 32% of the drivers are experienced.
+
+2. **Risk (Incidence Proportion)** shows that non-experienced drivers are significantly more likely to be involved in an accident than experienced drivers (28% vs. 9.4%).
+
+3. **Incidence Rate** adjusts for the time of exposure, showing that experienced drivers have a slightly higher accident rate per unit of time than non-experienced drivers. This could suggest that the longer driving time for experienced drivers leads to more accidents, even though they are generally less risky when viewed as a percentage of the group.
