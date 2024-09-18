@@ -70,7 +70,7 @@ risk_calculation <- function(data, general_flag, experience_flag) {
   risk_summary <- risk_summary %>%
     mutate(risk = (accident_count / risk_all) * 100)
 
-  risk_value <- risk_summary$risk
+  risk_value <- round(risk_summary$risk, 2)
 
   return(risk_value)
 }
@@ -96,17 +96,27 @@ incidence_rate_calculation <- function(data, experience_flag = NA) {
       filter(experience == experience_flag)
   }
   
-  # Calculate observation time and incidence rate
+  # Calculate observation time and accident count
   incidence_summary <- data %>%
     mutate(observation_time = stop - start) %>%
     summarize(
       total_observation_time = sum(observation_time),
       accident_count = sum(accident == 1)
-    ) %>%
-    mutate(incidence_rate = accident_count / total_observation_time)
+    )
   
-  incidence_rate <- incidence_summary$incidence_rate
-  return(incidence_rate)
+  # Calculate the total observation time in years
+  total_years <- incidence_summary$total_observation_time / 365
+  print(total_years)  # Optional: For debugging
+  
+  # Calculate incidence rate
+  incidence_rate <- round(incidence_summary$accident_count / incidence_summary$total_observation_time, 4)
+  incidence_rate_str <- paste(incidence_rate, "accidents per total observation time", round(total_years, 2), " years")
+  
+  # Calculate incidence rate per year
+  incidence_rate_per_year <- round(incidence_summary$accident_count / total_years, 2)
+  incidence_rate_per_year_str <- paste(incidence_rate_per_year, "accidents per year")
+  
+  return(list(incidence_rate = incidence_rate_str, incidence_rate_per_year = incidence_rate_per_year_str))
 }
 
 # Example usage:
@@ -114,10 +124,10 @@ incidence_rate_general <- incidence_rate_calculation(data)
 incidence_rate_experienced <- incidence_rate_calculation(data, 1)
 incidence_rate_not_experienced <- incidence_rate_calculation(data, 0)
 
-  
-print(paste("Incidence rate for all drivers is equal to", incidence_rate_general))
-print(paste("Incidence rate for experienced drivers is equal to", incidence_rate_experienced))
-print(paste("Incidence rate for non-experienced drivers is equal to", incidence_rate_not_experienced))
+print(paste("Incidence rate for all drivers is equal to", incidence_rate_general$incidence_rate, "or", incidence_rate_general$incidence_rate_per_year))
+print(paste("Incidence rate for experienced drivers is equal to", incidence_rate_experienced$incidence_rate, "or", incidence_rate_experienced$incidence_rate_per_year))
+print(paste("Incidence rate for non-experienced drivers is equal to", incidence_rate_not_experienced$incidence_rate, "or", incidence_rate_not_experienced$incidence_rate_per_year))
+
 ```
 \newpage
 # Summarise results and add logical explanation
@@ -128,19 +138,19 @@ print(paste("Incidence rate for non-experienced drivers is equal to", incidence_
 
 2. Incidence proportion(Risk) for all drivers is equal to **22 %**
 
-3. Incidence proportion(Risk) for experienced drivers is equal to **9.375 %**
+3. Incidence proportion(Risk) for experienced drivers is equal to **9.38 %**
 
-4. Incidence proportion(Risk) for non-experienced drivers is equal to **27.9411764705882 %**
+4. Incidence proportion(Risk) for non-experienced drivers is equal to **27.94 %** per unit time (driver-years)
 
-5. Incidence rate for all drivers is equal to **0.00304624757684852**
+5. Incidence rate for all drivers is equal to **0.003** accidents per total observation time 19.79 years or **1.11** accidents per year
 
-6. Incidence rate for experienced drivers is equal to **0.00317796610169492**
+6. Incidence rate for experienced drivers is equal to **0.0032** accidents per total observation time 2.59 years or **1.16** accidents per year
 
-7. Incidence rate for non-experienced drivers is equal to **0.00302644154189232**
+7. Incidence rate for non-experienced drivers is equal to **0.003** accidents per total observation time 17.2 years or **1.1** accidents per year
 
 ## Overall Interpretation
-1. **Prevalence** tells us that only 32% of the drivers are experienced.
+1. **Prevalence** tells us that only 32 % of the drivers are experienced.
 
-2. **Risk (Incidence Proportion)** shows that non-experienced drivers are significantly more likely to be involved in an accident than experienced drivers (28% vs. 9.4%).
+2. **Risk (Incidence Proportion)** shows that non-experienced drivers are significantly more likely to be involved in an accident than experienced drivers (27.94 % vs. 9.4 %).
 
 3. **Incidence Rate** adjusts for the time of exposure, showing that experienced drivers have a slightly higher accident rate per unit of time than non-experienced drivers. This could suggest that the longer driving time for experienced drivers leads to more accidents, even though they are generally less risky when viewed as a percentage of the group.
