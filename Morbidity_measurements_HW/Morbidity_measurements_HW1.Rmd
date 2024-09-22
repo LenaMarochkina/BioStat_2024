@@ -109,14 +109,14 @@ incidence_rate_calculation <- function(data, experience_flag = NA) {
   print(total_years)  # Optional: For debugging
   
   # Calculate incidence rate
-  incidence_rate <- round(incidence_summary$accident_count / incidence_summary$total_observation_time, 4)
-  incidence_rate_str <- paste(incidence_rate, "accidents per total observation time", round(total_years, 2), " years")
+  incidence_rate <- round(incidence_summary$accident_count / incidence_summary$total_observation_time, 6)
+  incidence_rate_str <- paste(incidence_rate, "accidents per day")
   
   # Calculate incidence rate per year
-  incidence_rate_per_year <- round(incidence_summary$accident_count / total_years, 2)
-  incidence_rate_per_year_str <- paste(incidence_rate_per_year, "accidents per year")
+  incidence_rate_per_thousand_days <- round(incidence_rate * 1000, 2)
+  incidence_rate_per_thousand_days_str <- paste(incidence_rate_per_thousand_days, "accidents per 1000 days")
   
-  return(list(incidence_rate = incidence_rate_str, incidence_rate_per_year = incidence_rate_per_year_str))
+  return(list(incidence_rate = incidence_rate_str, incidence_rate_per_thousand_days = incidence_rate_per_thousand_days_str))
 }
 
 # Example usage:
@@ -124,9 +124,9 @@ incidence_rate_general <- incidence_rate_calculation(data)
 incidence_rate_experienced <- incidence_rate_calculation(data, 1)
 incidence_rate_not_experienced <- incidence_rate_calculation(data, 0)
 
-print(paste("Incidence rate for all drivers is equal to", incidence_rate_general$incidence_rate, "or", incidence_rate_general$incidence_rate_per_year))
-print(paste("Incidence rate for experienced drivers is equal to", incidence_rate_experienced$incidence_rate, "or", incidence_rate_experienced$incidence_rate_per_year))
-print(paste("Incidence rate for non-experienced drivers is equal to", incidence_rate_not_experienced$incidence_rate, "or", incidence_rate_not_experienced$incidence_rate_per_year))
+print(paste("Incidence rate for all drivers is equal to", incidence_rate_general$incidence_rate, "or", incidence_rate_general$incidence_rate_per_thousand_days))
+print(paste("Incidence rate for experienced drivers is equal to", incidence_rate_experienced$incidence_rate, "or", incidence_rate_experienced$incidence_rate_per_thousand_days))
+print(paste("Incidence rate for non-experienced drivers is equal to", incidence_rate_not_experienced$incidence_rate, "or", incidence_rate_not_experienced$incidence_rate_per_thousand_days))
 
 ```
 \newpage
@@ -142,11 +142,11 @@ print(paste("Incidence rate for non-experienced drivers is equal to", incidence_
 
 4. Incidence proportion(Risk) for non-experienced drivers is equal to **27.94 %** per unit time (driver-years)
 
-5. Incidence rate for all drivers is equal to **0.003** accidents per total observation time 19.79 years or **1.11** accidents per year
+5. Incidence rate for all drivers is equal to **0.003046** accidents per day or **3.05** accidents per 1000 days
 
-6. Incidence rate for experienced drivers is equal to **0.0032** accidents per total observation time 2.59 years or **1.16** accidents per year
+6. Incidence rate for experienced drivers is equal to **0.003178** accidents per day or **3.18** accidents per 1000 days
 
-7. Incidence rate for non-experienced drivers is equal to **0.003** accidents per total observation time 17.2 years or **1.1** accidents per year
+7. Incidence rate for non-experienced drivers is equal to **0.003026** accidents per day or **3.03** accidents per 1000 days
 
 ## Overall Interpretation
 1. **Prevalence** tells us that only 32 % of the drivers are experienced.
