@@ -1,8 +1,11 @@
 ---
 title: "Data_visualization_HW_1"
 author: "Elena Marochkina"
-date: "2024-09-22"
-output: html_document
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 1
 ---
 
 ```{r setup, include=FALSE}
@@ -10,6 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(readr)
 library(tidyverse)
 ```
+
 # Read and glimpse data
 ```{r}
 hogwarts <- read_csv("Data_visualization/data/hogwarts_2024.csv")
@@ -21,14 +25,15 @@ hogwarts %>%
 1. Create a bar plot showing the distribution of the number of students by course of study. Use any of the built-in ggplot themes. Color the bars any color you like (you can use both verbal notations and hexcodes). Add a color to the outline of the bars. (1 pt).
 
 ```{r}
-# Change course for factorial vatiable
-hogwarts$course <- as.factor(hogwarts$course)
-
-ggplot(hogwarts)+
+hogwarts |> 
+  mutate(course = as.factor(course)) |>
+  ggplot()+
   geom_bar(aes(x = course, fill = course), colour = "black")+ 
-  scale_y_discrete(name = "number of students")
+  scale_y_continuous(name = "number of students", 
+                   breaks = seq(0, max(table(hogwarts$house)), by = 20))+
   theme_bw()
 ```
+
 2. Create a new barplot showing the distribution of students by faculty. Add a second factor variable to the graph - bloodStatus. Modify the graph's position argument so that each column shows the distribution of faculty by blood purity in shares. Apply a custom theme. Write down in text in the rmd document what conclusion can be drawn from the graph? (1 pt).
 
 ```{r}
@@ -36,7 +41,8 @@ theme_custom <- theme(
     axis.text = element_text(size = 14),
     axis.title = element_text(size = 14),
     legend.title = element_text(size = 12),
-    legend.text = element_text(size = 12)
+    legend.text = element_text(size = 12),
+    title = element_text(size = 18)
   )
 
 ggplot(hogwarts)+
@@ -51,43 +57,43 @@ ggplot(hogwarts)+
   theme_bw()+
   theme_custom
 ```
+
 **Description:**
+
 *House Size:*
 
-- Gryffindor and Slytherin have the largest student populations.
-- Hufflepuff has the second-largest population.
-- Ravenclaw has the smallest population.
+- Hufflepuff and Slytherin have the largest student populations.
+- Slytherin has the second-largest population.
+- Gryffindor has the smallest population.
 
 *Blood Status Distribution:*
 
 - Half-blood students are the most common in all houses.
-- Pure-blood students are the least common in all houses.
-- Muggle-born students have a significant presence in all houses, especially in Gryffindor and Slytherin.
+- Muggle-born students are the least common in all houses.
+- Pure-blood students are slightly more common than Muggle-born students.
 
 *House-Specific Trends:*
 
-- Gryffindor has a relatively balanced distribution of blood statuses.
-- Hufflepuff has a slightly higher proportion of half-blood students.
-- Ravenclaw has a slightly higher proportion of muggle-born students.
-- Slytherin has a slightly higher proportion of pure-blood students, though half-bloods are still the majority.
+- Hufflepuff has a slightly higher proportion of half-blood and pure-blood students.
+- Gryffindor has a slightly higher proportion of muggle-born students than other houses.
+- Slytherin has the minimul number of muggle-born students, though half-bloods are still the majority.
+
 
 3. Modify the dataset so that it contains only pure-blood and muggle-born students. Create a graph from step 2 based on this data. Add a horizontal dotted line of any color at the 50% level. Name the axes in Russian (1 pt). Additionally: rename the pure-blood and muggle-born legend categories to Russian (0.5 pt).
 
 ``` {r}
-filtered_data <- hogwarts |> 
-  filter(bloodStatus == "pure-blood" | bloodStatus == "muggle-born")
-
-count_data <- filtered_data |> 
+overall_max_count <- hogwarts |> 
+  filter(bloodStatus %in% c("pure-blood", "muggle-born")) |> 
   group_by(house, bloodStatus) |> 
-  summarise(count = n(), .groups = "drop")
-
-max_count_per_house <- count_data |> 
+  summarise(count = n(), .groups = "drop") |> 
   group_by(house) |> 
-  summarise(max_count = max(count), .groups = "drop")
+  summarise(max_count = max(count), .groups = "drop") |> 
+  summarise(overall_max_count = max(max_count)) |> 
+  pull(overall_max_count)
 
-overall_max_count <- max(max_count_per_house$max_count)
-
-ggplot(filtered_data)+
+hogwarts |>
+  filter(bloodStatus %in% c("pure-blood", "muggle-born")) |>
+  ggplot()+
   geom_bar(aes(x = house, fill = factor(bloodStatus, 
                               levels = c("pure-blood", "muggle-born"), 
                               labels = c("Чистокровный", "Маглорожденный"))), 
@@ -102,16 +108,196 @@ ggplot(filtered_data)+
   theme_bw()+
   theme_custom
 
-
-  
-
-```
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+# Box plots
+
+1. Display the distribution of grades earned by students in week 3 by department. Sort the departments in descending order of the median grade for week 3 (we didn't go into this in the lecture, but the function mentioned there sorts by median by default, so no additional arguments should be passed in this case). (1 pt.)
+
+``` {r}
+hogwarts |>
+  select(week_3, house) |>
+  ggplot()+
+  geom_boxplot(aes(y = week_3, 
+                   x = fct_reorder(house, week_3, .fun = median, .desc = TRUE), fill = "coral"), 
+               colour = "grey5")+
+  scale_x_discrete(name = "House")+
+  scale_y_continuous(name = "Grade")+
+  theme_bw()+
+  theme_custom+
+  theme(legend.position = "none")
+
+```
+
+2. Add color coding for students' blood status. Add a notch to the boxplot. Set the image size for this chunk to 14:14 inches. Correct the axis labels. (1 pt.)
+
+``` {r, fig.width=14, fig.height=14}
+hogwarts |>
+  select(week_3, house, bloodStatus) |>
+  ggplot()+
+  geom_boxplot(aes(y = week_3, 
+                   x = fct_reorder(house, week_3, .fun = median, .desc = TRUE), fill = bloodStatus), 
+               colour = "grey5", notch = TRUE)+
+  scale_x_discrete(name = "House")+
+  scale_y_continuous(name = "Grade")+
+  scale_fill_manual(values = c("half-blood" = "darkolivegreen3", 
+                               "muggle-born" = "tomato1", 
+                               "pure-blood" = "snow"))+
+  theme_bw()+
+  theme_custom
+
+```
+
+3. Add a jitter plot to the graph. Remove the outliers from the box plot. Modify the line thickness and box plot width to your liking. (1 pt.) Optional: Add a plot title and caption (0.5 pt.)
+
+``` {r, fig.width=14, fig.height=14}
+hogwarts |>
+  select(week_3, house, bloodStatus) |>
+  ggplot()+
+  geom_boxplot(aes(y = week_3, 
+                   x = fct_reorder(house, week_3, .fun = median, .desc = TRUE), fill = bloodStatus), 
+               colour = "grey5", notch = TRUE, outliers = FALSE, alpha = 0.5, linewidth = 0.75, width = 0.7)+
+  geom_jitter(aes(x = fct_reorder(house, week_3, .fun = median, .desc = TRUE), 
+                   y = week_3), alpha = 0.75, width = 0.25)+
+  scale_x_discrete(name = "House")+
+  scale_y_continuous(name = "Grade")+
+  scale_fill_manual(values = c("half-blood" = "darkolivegreen3", 
+                               "muggle-born" = "tomato1", 
+                               "pure-blood" = "snow"))+
+  labs(title = "Distribution of Student Grades by House",
+       subtitle = "Grades for Week 3 by Blood Status")+
+  theme_bw()+
+  theme_custom
+```
+
+# Other
+
+1. Plot a lollipop plot of the scores of 5th-year students for the entire academic year (with student ID on the ordinate and final score on the abscissa). Sort the students in descending order of their final score. Color the dots on the lollipops based on the core of the wand. Wands with a dragon heartstring should be red, those with a phoenix feather should be yellow, and those with unicorn hair should be gray. (1 point)
+
+``` {r, fig.width=14, fig.height=14}
+hogwarts |>
+  mutate(id = factor(id)) |>
+  filter(course == "5") |>
+  arrange(desc(result)) |>
+  ggplot()+
+  geom_segment(aes(y = fct_reorder(id, result), 
+                   yend = fct_reorder(id, result), 
+                   x = 0, 
+                   xend = result))+
+  geom_point(aes(y = fct_reorder(id, result), 
+                 x = result, 
+                 color = wandCore),
+             size = 3)+
+  scale_color_manual(values = c("dragon heartstring" = "red", 
+                                 "phoenix feather" = "yellow", 
+                                 "unicorn hair" = "gray"), 
+                     name = "Wand Core")+
+  labs(x = "Final Score", y = "Student ID", title = "Final Scores of 5th-Year Students")+
+  theme_bw()+
+  theme_custom
+
+```
+
+2. Plot a histogram of the distribution of marks for the Astronomy exam.
+Highlight Slytherin House. Use 18-point font for the text on the x-axis, y-axis, and legend. Write the title of the y-axis and legend in 20-point font, and the x-axis in 22-point font. Change the title of the y-axis to “Number of students”. (1 pt.)
+
+``` {r}
+
+hogwarts |>
+  ggplot(aes(x = `Astronomy exam`, fill = house))+ 
+  geom_histogram(data = filter(hogwarts, house == "Slytherin"), colour = "gray",
+                 alpha = 0.9, bins = 30)+ 
+  geom_histogram(data = filter(hogwarts), colour = "gray",
+                 alpha = 0.5, bins = 30)+ 
+  scale_fill_manual(values = c("Slytherin" = "pink", "Gryffindor" = "gray", "Hufflepuff" = "gray", "Ravenclaw" = "gray"))+
+  labs(x = "Marks", y = "Number of students", title = "Distribution of Marks for Astronomy Exam")+ 
+  theme_bw()+
+  theme(
+    axis.text.x = element_text(size = 18), 
+    axis.text.y = element_text(size = 18), 
+    axis.title.x = element_text(size = 22), 
+    axis.title.y = element_text(size = 20),
+    legend.title = element_text(size = 20), 
+    legend.text = element_text(size = 18),
+    title = element_text(size = 20)
+  )
+```
+
+3. In the lecture, we used a combination of theme_bw() and the theme_custom we created to simultaneously make the background white and make the font larger. Modify theme_custom so that it does what it did before and makes the background white without using theme_bw(). Apply the new custom theme to the graph you got in the last step of the boxplot block (1.5b).
+
+``` {r}
+theme_custom_new <- theme(
+    axis.text.x = element_text(size = 18), 
+    axis.text.y = element_text(size = 18), 
+    axis.title.x = element_text(size = 22), 
+    axis.title.y = element_text(size = 20),
+    legend.title = element_text(size = 20), 
+    legend.text = element_text(size = 18),
+    title = element_text(size = 20),
+    panel.background = element_rect(fill = "white"),
+    plot.background = element_rect(fill = "white"),
+    panel.grid.major = element_line(color = "grey80"),
+    panel.grid.minor = element_line(color = "grey80"),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5)
+)
+
+hogwarts |>
+  ggplot(aes(x = `Astronomy exam`, fill = house))+ 
+  geom_histogram(data = filter(hogwarts, house == "Slytherin"), colour = "gray",
+                 alpha = 0.9, bins = 30)+ 
+  geom_histogram(data = filter(hogwarts), colour = "gray",
+                 alpha = 0.5, bins = 30)+ 
+  scale_fill_manual(values = c("Slytherin" = "pink", "Gryffindor" = "gray", "Hufflepuff" = "gray", "Ravenclaw" = "gray"))+
+  labs(x = "Marks", y = "Number of students", title = "Distribution of Marks for Astronomy Exam")+ 
+  theme_custom_new
+
+```
+
+# Faceting Histograms
+1. Write which, in your opinion, faceting method (by rows or by columns) is better to use for visualizing the histogram. Why? And which one for visualizing violin-plot? Why? Is it possible to derive a general rule? (1.5 points)
+
+**Answer**
+
+Using **facet_wrap()** for histograms: histograms typically show the distribution of a single variable, making facet_wrap() ideal for comparing distributions across groups.
+
+Using **facet_grid()** for violin plots: violin plots are great for comparing distributions across two dimensions, such as house and blood status.
+
+facet_grid() effectively displays one variable across rows and another across columns.
+
+**General Rule**
+
+- **facet_wrap()** should be used for single-variable comparisons (e.g., histograms).
+- **facet_grid()** should be used for multi-variable comparisons (e.g., violin plots).
+
+2. Plot a histogram for the result of any exam of your choice, except Potions. Set the optimal number of histogram columns in your opinion. Perform faceting by course. Try to make the graph as compact as possible. (1 point).
+
+``` {r}
+hogwarts |> 
+  ggplot()+
+  geom_histogram(aes(x = `Study of ancient runes exam`),
+                 colour = "black", 
+                 fill = "pink",
+                 bins = 30)+
+  scale_y_continuous(name = "Number of students", 
+                     breaks = seq(0, max(table(hogwarts$house)), by = 2.5))+
+  facet_wrap(course~.)+
+  theme_bw()
+```
+
+3. Display on one graph the probability density distribution for student assessment in the Defense Against the Dark Arts exam and the Herbology exam. Color them in any colors you choose, try to display both distributions in their entirety. Apply the topic from the 3rd point of the “Miscellaneous” block. Perform faceting by gender (1 point).
+
+``` {r}
+hogwarts |>
+  pivot_longer(cols = c(`Defence against the dark arts exam`, `Herbology exam`), 
+               names_to = "Subject", 
+               values_to = "Score") |> 
+  ggplot(aes(x = Subject, y = Score, fill = Subject)) + 
+  geom_violin(alpha = 0.6)+ 
+  scale_fill_manual(values = c("Defence against the dark arts exam" = "skyblue", 
+                                "Herbology exam" = "lightgreen")) + 
+  labs(x = "Exam Subject", y = "Score", title = "Density Distribution of Exam Scores") + 
+  theme_custom_new + 
+  theme(axis.text.x = element_blank())+
+  facet_wrap(vars(sex))
+
+```
