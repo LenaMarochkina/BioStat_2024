@@ -1,0 +1,117 @@
+---
+title: "Data_visualization_HW_1"
+author: "Elena Marochkina"
+date: "2024-09-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(tidyverse)
+```
+# Read and glimpse data
+```{r}
+hogwarts <- read_csv("Data_visualization/data/hogwarts_2024.csv")
+hogwarts %>%
+  glimpse()
+```
+# Bar plots
+
+1. Create a bar plot showing the distribution of the number of students by course of study. Use any of the built-in ggplot themes. Color the bars any color you like (you can use both verbal notations and hexcodes). Add a color to the outline of the bars. (1 pt).
+
+```{r}
+# Change course for factorial vatiable
+hogwarts$course <- as.factor(hogwarts$course)
+
+ggplot(hogwarts)+
+  geom_bar(aes(x = course, fill = course), colour = "black")+ 
+  scale_y_discrete(name = "number of students")
+  theme_bw()
+```
+2. Create a new barplot showing the distribution of students by faculty. Add a second factor variable to the graph - bloodStatus. Modify the graph's position argument so that each column shows the distribution of faculty by blood purity in shares. Apply a custom theme. Write down in text in the rmd document what conclusion can be drawn from the graph? (1 pt).
+
+```{r}
+theme_custom <- theme(
+    axis.text = element_text(size = 14),
+    axis.title = element_text(size = 14),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 12)
+  )
+
+ggplot(hogwarts)+
+  geom_bar(aes(x = house, fill = bloodStatus), colour = "black", position = "dodge2")+ 
+  scale_y_continuous(name = "Number of students", 
+                     breaks = seq(0, max(table(hogwarts$house)), by = 20))+
+  scale_x_discrete(name = "House")+
+  scale_fill_manual(values = c("half-blood" = "darkolivegreen3", 
+                               "muggle-born" = "tomato1", 
+                               "pure-blood" = "snow"),
+                    name = "Blood status")+
+  theme_bw()+
+  theme_custom
+```
+**Description:**
+*House Size:*
+
+- Gryffindor and Slytherin have the largest student populations.
+- Hufflepuff has the second-largest population.
+- Ravenclaw has the smallest population.
+
+*Blood Status Distribution:*
+
+- Half-blood students are the most common in all houses.
+- Pure-blood students are the least common in all houses.
+- Muggle-born students have a significant presence in all houses, especially in Gryffindor and Slytherin.
+
+*House-Specific Trends:*
+
+- Gryffindor has a relatively balanced distribution of blood statuses.
+- Hufflepuff has a slightly higher proportion of half-blood students.
+- Ravenclaw has a slightly higher proportion of muggle-born students.
+- Slytherin has a slightly higher proportion of pure-blood students, though half-bloods are still the majority.
+
+3. Modify the dataset so that it contains only pure-blood and muggle-born students. Create a graph from step 2 based on this data. Add a horizontal dotted line of any color at the 50% level. Name the axes in Russian (1 pt). Additionally: rename the pure-blood and muggle-born legend categories to Russian (0.5 pt).
+
+``` {r}
+filtered_data <- hogwarts |> 
+  filter(bloodStatus == "pure-blood" | bloodStatus == "muggle-born")
+
+count_data <- filtered_data |> 
+  group_by(house, bloodStatus) |> 
+  summarise(count = n(), .groups = "drop")
+
+max_count_per_house <- count_data |> 
+  group_by(house) |> 
+  summarise(max_count = max(count), .groups = "drop")
+
+overall_max_count <- max(max_count_per_house$max_count)
+
+ggplot(filtered_data)+
+  geom_bar(aes(x = house, fill = factor(bloodStatus, 
+                              levels = c("pure-blood", "muggle-born"), 
+                              labels = c("Чистокровный", "Маглорожденный"))), 
+               colour = "black", position = "dodge2")+ 
+  scale_y_continuous(name = "Number of students", 
+                     breaks = seq(0, overall_max_count, by = 10))+
+  scale_x_discrete(name = "House")+
+  scale_fill_manual(values = c("Чистокровный" = "snow", 
+                               "Маглорожденный" = "tomato1"),
+                    name = "Кровь")+
+  geom_hline(yintercept = 0.5 * overall_max_count, linetype = "dotted", linewidth = 1, color = "bisque3")+
+  theme_bw()+
+  theme_custom
+
+
+  
+
+```
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
