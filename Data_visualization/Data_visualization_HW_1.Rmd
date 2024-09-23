@@ -16,7 +16,7 @@ library(tidyverse)
 
 # Read and glimpse data
 ```{r}
-hogwarts <- read_csv("Data_visualization/data/hogwarts_2024.csv")
+hogwarts <- read_csv("data/hogwarts_2024.csv")
 hogwarts %>%
   glimpse()
 ```
