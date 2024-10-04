@@ -1,0 +1,32 @@
+---
+title: "Measure_of_associations_HW"
+author: "Elena Marochkina"
+date: "2024-10-02"
+output:
+  word_document: 
+    toc: yes
+    toc_depth: 1
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Task 1
+
+Doctors decided to study how body mass index (BMI) is associated with the risk of developing type 2 diabetes. The file
+diabetes.csv contains data on a random sample of 200 residents of settlement N. For each respondent, the BMI (high or normal) and diabetes status (presence/absence of type 2 diabetes) are known. Determine how high BMI is associated with the development of type 2 diabetes, indicate the relative risk and the absolute risk difference. How do you interpret the results?
+
+```{r diabetis}
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
