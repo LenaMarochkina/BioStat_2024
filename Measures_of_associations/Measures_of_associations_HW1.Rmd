@@ -1,7 +1,7 @@
 ---
 title: "Measure_of_associations_HW"
 author: "Elena Marochkina"
-date: "2024-10-02"
+date: "`r Sys.Date()`"
 output:
   word_document: 
     toc: yes
@@ -17,16 +17,96 @@ knitr::opts_chunk$set(echo = TRUE)
 Doctors decided to study how body mass index (BMI) is associated with the risk of developing type 2 diabetes. The file
 diabetes.csv contains data on a random sample of 200 residents of settlement N. For each respondent, the BMI (high or normal) and diabetes status (presence/absence of type 2 diabetes) are known. Determine how high BMI is associated with the development of type 2 diabetes, indicate the relative risk and the absolute risk difference. How do you interpret the results?
 
-```{r diabetis}
+```{r diabetes}
+# Load the diabetes data
+data_diabetes <- read.csv("data/raw/diabetes.csv")
+
+# Create a contingency table for BMI and Diabetes status
+contingency_table <- table(data_diabetes$ИМТ, data_diabetes$Диабет)
+
+# The structure of the table is:
+#                Диабет (Есть)  Диабет (Нет)
+# ИМТ Высокий     a              b
+# ИМТ Нормальный  c              d
+
+# Extract values from the contingency table
+High_BMI_Diabetes <- contingency_table["Высокий", "Есть"]
+High_BMI_Healthy  <- contingency_table["Высокий", "Нет"]
+Normal_BMI_Diabetes <- contingency_table["Нормальный", "Есть"]
+Normal_BMI_Healthy  <- contingency_table["Нормальный", "Нет"]
+
+# Calculate Incidence Rates (IR)
+IR_High_BMI_Diabetes <- High_BMI_Diabetes / (High_BMI_Diabetes + High_BMI_Healthy)
+IR_Normal_BMI_Diabetes <- Normal_BMI_Diabetes / (Normal_BMI_Diabetes + Normal_BMI_Healthy)
+
+# Calculate Relative Risk (RR)
+RR <- IR_High_BMI_Diabetes / IR_Normal_BMI_Diabetes
+
+# Calculate Risk Difference (RD)
+RD <- IR_High_BMI_Diabetes - IR_Normal_BMI_Diabetes
 
 ```
 
-## Including Plots
+**Incidence Rate (IR) for High BMI = 0.59** : This means that 59% of individuals with a high BMI developed type 2 diabetes over the study period.
 
-You can also embed plots, for example:
+**Incidence Rate (IR) for Normal BMI = 0.26** : This indicates that 26% of individuals with a normal BMI developed type 2 diabetes during the same period.
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+**Relative Risk (RR) = 2.24**: Individuals with a high BMI are 2.24 times more likely to develop type 2 diabetes compared to individuals with a normal BMI. This shows a strong association between high BMI and the likelihood of developing diabetes.
+
+**Risk Difference (RD) = 0.33**: The absolute risk of developing type 2 diabetes is 33% higher in individuals with a high BMI compared to those with a normal BMI. This highlights a substantial increase in risk associated with high BMI.
+
+The results demonstrate that high BMI significantly increases both the relative and absolute risk of developing type 2 diabetes. With a relative risk of 2.24 and a risk difference of 33%, these findings suggest that managing BMI is crucial for reducing the risk of type 2 diabetes in the population.
+
+# Task 2
+
+Task 2. An outbreak of pneumonia has been recorded in city N. 250 people living in different houses have been affected.
+All of them have visited different places over the past two weeks: shopping centers, restaurants, and social events. 750 people who did not get pneumonia were taken as a control. A survey was conducted about which places each person visited (pneumonia.csv). Using an appropriate measure of association,
+determine which place of visit is most likely associated with the occurrence of pneumonia.
+
+```{r}
+data_pneumonia <- read.csv("data/raw/pneumonia.csv")
+
+# Create contingency tables for each place
+restaurant_table <- table(data_pneumonia$`Ресторан`, data_pneumonia$`Группа`)
+mall_table <- table(data_pneumonia$`Торговый.центр`, data_pneumonia$`Группа`)
+soc_events_table <- table(data_pneumonia$`Общественные.мероприятия`, data_pneumonia$`Группа`)
+
+# Calculate odds ratio manually for each place
+calculate_odds_ratio <- function(contingency_table) {
+  # Values in the table: (row, column)
+  # (1,1) -> exposed controls (visited place and did not get pneumonia)
+  # (1,2) -> exposed cases (visited place and got pneumonia)
+  # (2,1) -> non-exposed controls (did not visit place and did not get pneumonia)
+  # (2,2) -> non-exposed cases (did not visit place and got pneumonia)
+  
+  exposed_cases <- contingency_table[1, 2]
+  exposed_controls <- contingency_table[1, 1]
+  non_exposed_cases <- contingency_table[2, 2]
+  non_exposed_controls <- contingency_table[2, 1]
+  
+  # Calculate odds for exposed and non-exposed
+  odds_exposed <- exposed_cases / exposed_controls
+  odds_non_exposed <- non_exposed_cases / non_exposed_controls
+  
+  # Odds ratio
+  odds_ratio <- odds_exposed / odds_non_exposed
+  return(odds_ratio)
+}
+
+# Calculate odds ratio for each place
+restaurant_or <- calculate_odds_ratio(restaurant_table)
+mall_or <- calculate_odds_ratio(mall_table)
+soc_events_or <- calculate_odds_ratio(soc_events_table)
+
 ```
+**Restaurant OR = 1.11**
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+The odds of getting pneumonia for people who visited a restaurant are 11% higher than for those who did not visit a restaurant. Since the odds ratio is greater than 1 (1.11), it suggests a weak positive association between visiting a restaurant and getting pneumonia. However, this association is not strong, meaning that visiting a restaurant might slightly increase the risk of pneumonia, but the effect is minimal.
+
+**Mall OR = 1.55**
+
+The odds of getting pneumonia for people who visited a mall are 55% higher than for those who did not visit a mall. An OR of 1.55 suggests a moderate positive association between visiting a mall and getting pneumonia. This indicates that people who visited the mall were somewhat more likely to develop pneumonia compared to those who did not visit the mall.
+
+**Social Events OR = 0.98**
+
+The odds of getting pneumonia for people who attended social events are almost the same as for those who did not attend social events. An OR of 0.98 indicates virtually no association between attending social events and the risk of getting pneumonia. This means that attending social events neither increases nor decreases the likelihood of developing pneumonia.
