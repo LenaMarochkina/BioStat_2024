@@ -1,0 +1,232 @@
+---
+title: "Data_visualization_HW_2"
+author: "Elena Marochkina"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 1
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(readr)
+library(tidyverse)
+library(ggplot2)
+```
+
+# Read and glimpse data
+```{r}
+hogwarts <- read_csv("data/hogwarts_2024.csv")
+hogwarts %>%
+  glimpse()
+hogwarts <- hogwarts |> mutate(
+  across(c(house, course, sex, wandCore, bloodStatus), ~ as.factor(.x))
+)
+```
+
+# Scatter Plot
+
+1. Build a scatterplot that visualizes the relationship between the total score of the student for the year and the grade for the exam in herbal exam. Add a trend line to the chart. Remove the trust area and make the line straight. Think about how to avoid writing the same x and y coordinates twice. Interpret the graph. (1 p.) 
+
+``` {r scatter plot}
+theme_custom <- theme(
+    panel.background = element_rect(fill = "white"),
+    plot.title = element_text(size = 15, hjust = 0.5),
+    plot.subtitle = element_text(size = 15, hjust = 0.5),
+    strip.text = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 15),
+    legend.title = element_text(size = 15),
+    legend.text = element_text(size = 10),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black")
+  )
+
+ggplot(hogwarts, aes(x = `result`, y = `Herbology exam`))+
+  geom_point()+
+  geom_smooth(se = FALSE, method = "lm", colour = "red")+
+  theme_custom
+
+```
+
+**Interpretation:**
+
+The data reveals an upward trend from left to right, indicating a positive relationship between the students' total yearly score and their grade in the Herbology exam. This suggests that students with higher overall scores tend to perform better in this specific exam. The trend line reinforces this positive association.
+
+Additionally, most students' total scores range from 70 to 200 points, while their Herbology exam grades fall between 25 and 75 points, highlighting the concentration of data within these intervals.
+2. On one illustration, draw scatterplots similar to what you did on the first assignment, for exams on herbal medicine, magic medicine, fortune-telling, and potions. A trend line with characteristics similar to those in point 1 should also be present in the illustration. Color the points in different colors, according to the faculties. Use the standard colors of faculties (as in lecture rooms). Interpret the obtained result. (1 p). If you create an illustration from this point, using only packages of the tidyverse family, and not involving additional funds, you will receive an additional 0.5 p. 
+
+``` {r scatter plot 2}
+hogwarts_long <- hogwarts %>%
+  pivot_longer(cols = c(`Herbology exam`, `Muggle studies exam`, `Defence against the dark arts exam`, `Potions exam`),
+               names_to = "subject",
+               values_to = "score")
+
+ggplot(hogwarts_long, aes(x = result, y = score, color = subject)) +
+  geom_point() +
+  geom_smooth(se = FALSE, method = "lm") +
+  scale_color_manual(values = c("Defence against the dark arts exam" = "#C50000", 
+                                "Muggle studies exam" = "#ECB939", 
+                                "Herbology exam" = "#41A6D9", 
+                                "Potions exam" = "#1F5D25")) +
+  theme_custom
+
+```
+``` {r scatter plot 2.1}
+# Didn't understand task clearly, so decided to add two types of scatterplot. Hope one of them will work :)
+
+ggplot(hogwarts_long, aes(x = result, y = score, color = subject))+
+  geom_point()+
+  geom_smooth(se = FALSE, method = "lm", color = "black")+
+  facet_wrap(~subject, ncol = 2)+
+  theme_custom
+```
+
+**Interpretation:**
+
+The data shows that there is a positive correlation between the overall student score and the grades in the Herbology, Muggle Studies, and Defense Against the Dark Arts exams. This means that as the overall score increases, the grades in these subjects tend to improve as well, suggesting that students who perform well throughout the year tend to also score higher in these exams. In contrast, there is a negative correlation between the overall score and the grade in the Potions exam.
+
+3. Modify the graph obtained on the previous step. Group and color the trend lines according to one of the categorical variables (with one that highlights one of the observations on the previous stage, related to all 4 exams). Try to avoid collisions in the legend, while also saving the color palette for coloring points by faculty. (1 p.)
+
+``` {r}
+
+```
+
+# Geom_col
+1. Plot a bar graph of the distribution of selected first-semester scores (weeks 1–17 are mandatory) for students of different origins. If you have difficulty, you can refer to posit's dplyr cheat sheet. Hypothesize (or hypotheses) why the results turned out that way. (1 pt.) 
+
+``` {r}
+hogwarts_17_weeks <- hogwarts %>%
+  select(bloodStatus, week_1:week_17) %>%
+  group_by(bloodStatus) %>% 
+  summarize(
+    total_score_17_weeks = sum(c_across(starts_with("week_")), na.rm = TRUE),
+    student_count = n() 
+  ) %>%
+  ungroup()
+
+ggplot(hogwarts_17_weeks)+
+  geom_col(aes(y = total_score_17_weeks, 
+               x = bloodStatus,
+              fill = bloodStatus))+
+  scale_fill_manual(values = c("half-blood" = "#C50000", 
+                             "muggle-born" = "#ECB939", 
+                             "pure-blood" = "#1F5D25"))+
+  labs(title = "Distribution of first-semester scores (Weeks 1–17) by student origin",
+       x = "Student origin",
+       y = "Total score (Weeks 1-17)",
+       fill = "Blood status")+
+  theme_custom
+
+```
+
+**Interpretation:**
+
+- Half-blood students have the highest total score over the first 17 weeks, with a score exceeding 7,500 points.
+- Muggle-born students have a moderate total score, considerably lower than half-blood students but still substantial.
+- Pure-blood students have a lower total score compared to both half-blood and Muggle-born students.
+
+**Hypothese:**
+- Larger groups (like half-bloods) may have more diversity in terms of abilities, backgrounds, and access to resources. This could result in a higher chance of including top-performing students, thereby increasing the group's overall total score.
+- Smaller groups (like pure-bloods or Muggle-borns) might show less variation, which can impact the group’s total performance. 
+
+2. Modify the previous graph - sort the columns in descending order of the specified number of points. Add text labels to the graph reflecting the numbers of origin of each student. Try using geom_label instead of geom_text for this task. Customize the appearance of geom_label as you wish. Adjust the axis title. Interpret the graph. Does it correspond to the interpretation of your hypothesis from point 1? (1 pt.) 
+
+``` {r}
+hogwarts_17_weeks <- hogwarts %>%
+  select(bloodStatus, week_1:week_17) %>%
+  group_by(bloodStatus) %>%
+  summarize(
+    total_score_17_weeks = sum(c_across(starts_with("week_")), na.rm = TRUE),
+    student_count = n()
+  ) %>%
+  ungroup()
+
+ggplot(hogwarts_17_weeks, aes(x = fct_reorder(bloodStatus, total_score_17_weeks, .desc = TRUE), 
+                              y = total_score_17_weeks, 
+                              fill = bloodStatus))+
+  geom_col()+
+  scale_fill_manual(values = c("half-blood" = "#C50000", 
+                               "muggle-born" = "#ECB939", 
+                               "pure-blood" = "#1F5D25")) +
+  labs(title = "Distribution of First-Semester Scores (Weeks 1–17) by Student Origin",
+       x = "Student Origin",
+       y = "Total Score (Weeks 1-17)",
+       fill = "Blood Status")+
+  geom_label(aes(label = paste("n =", student_count), 
+                 y = total_score_17_weeks/2),  # Position slightly above bars
+             fill = "white", 
+             size = 4, 
+             fontface = "bold", 
+             label.size = 0.5)+
+  theme_custom
+
+```
+**Interpretation:**
+
+The interpretation of the results remains consistent with the analysis in the 2.1 graph. The observed data supports my original hypothesis, confirming that the distribution of first-semester scores aligns with number of students of each origin. 
+
+3. Modify the graph again - add labels to break down not only by background, but also by gender. Color the columns by origin. Increase the value to make the columns readable. Give the graph a title, change the axis title if necessary. Make a step to the axis along which the points are included, every thousand points. Place the text labels on the left edge of the graph. Adjust the graph so that the labels are the world leader and are not cut off. Save the graph to your device. (1.5 pts.) 
+
+```{r}
+hogwarts_17_weeks <- hogwarts %>%
+  select(bloodStatus, week_1:week_17, sex) %>%
+  group_by(bloodStatus, sex) %>%
+  summarize(
+    total_score_17_weeks = sum(c_across(starts_with("week_")), na.rm = TRUE),
+    student_count = n()
+  ) %>%
+  ungroup()
+
+hogwarts_plot <- ggplot(hogwarts_17_weeks, aes(x = fct_reorder(bloodStatus, total_score_17_weeks, .desc = TRUE), 
+                              y = total_score_17_weeks, 
+                              fill = bloodStatus))+
+  geom_col(position = "dodge2", aes(group = sex))+
+  scale_fill_manual(values = c("half-blood" = "#C50000", 
+                               "muggle-born" = "#ECB939", 
+                               "pure-blood" = "#1F5D25")) +
+  labs(title = "Distribution of First-Semester Scores by Student Origin and Gender",
+       x = "Student Origin",
+       y = "Total Score (Weeks 1-17)",
+       fill = "Blood Status") +
+  
+  scale_y_continuous(breaks = seq(0, max(hogwarts_17_weeks$total_score_17_weeks) * 1.1, by = 1000)) +
+  
+  # Add labels to show the number of students by gender
+  geom_label(aes(label = paste(sex, "=", student_count)),
+             fill = "white", 
+             size = 3, 
+             fontface = "bold", 
+             position = position_dodge2(width = 0.9),
+             vjust = -0.5)+
+  expand_limits(y = max(hogwarts_17_weeks$total_score_17_weeks) * 1.1)+
+  theme_custom+
+  theme(plot.title = element_text(hjust = 0.2))
+
+print(hogwarts_plot)
+ggsave("hogwarts_17_weeks_plot.png", plot = hogwarts_plot, width = 10, height = 6)
+```
+
+4. Explore the coord_flip() function. When do you think it might be useful? What do you think its pros and cons are? (additional 0.5 pts.)
+
+```{r}
+ggplot(hogwarts_17_weeks, aes(x = bloodStatus, y = total_score_17_weeks, fill = bloodStatus)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Distribution of First-Semester Scores (Weeks 1–17) by Student Origin") +
+  theme_custom
+
+```
+
+**Pros:**
+
+- Long category names or a large number of categories are easier to read in a flipped orientation.
+- Horizontal bars are often easier for the eye to compare.
+
+**Cons:**
+
+- Some users may expect categories to be displayed along the x-axis by default, and flipping may reduce the immediate intuitiveness of the plot.
+- Some plots (like scatter plots with continuous variables) might not benefit from flipping coordinates, as it can make the plot look awkward or confusing.
+
