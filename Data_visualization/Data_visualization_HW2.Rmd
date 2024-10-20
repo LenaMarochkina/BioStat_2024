@@ -58,6 +58,8 @@ ggplot(hogwarts, aes(x = `result`, y = `Herbology exam`))+
 The data reveals an upward trend from left to right, indicating a positive relationship between the students' total yearly score and their grade in the Herbology exam. This suggests that students with higher overall scores tend to perform better in this specific exam. The trend line reinforces this positive association.
 
 Additionally, most students' total scores range from 70 to 200 points, while their Herbology exam grades fall between 25 and 75 points, highlighting the concentration of data within these intervals.
+
+
 2. On one illustration, draw scatterplots similar to what you did on the first assignment, for exams on herbal medicine, magic medicine, fortune-telling, and potions. A trend line with characteristics similar to those in point 1 should also be present in the illustration. Color the points in different colors, according to the faculties. Use the standard colors of faculties (as in lecture rooms). Interpret the obtained result. (1 p). If you create an illustration from this point, using only packages of the tidyverse family, and not involving additional funds, you will receive an additional 0.5 p. 
 
 ``` {r scatter plot 2}
@@ -90,6 +92,7 @@ ggplot(hogwarts_long, aes(x = result, y = score, color = subject))+
 
 The data shows that there is a positive correlation between the overall student score and the grades in the Herbology, Muggle Studies, and Defense Against the Dark Arts exams. This means that as the overall score increases, the grades in these subjects tend to improve as well, suggesting that students who perform well throughout the year tend to also score higher in these exams. In contrast, there is a negative correlation between the overall score and the grade in the Potions exam.
 
+
 3. Modify the graph obtained on the previous step. Group and color the trend lines according to one of the categorical variables (with one that highlights one of the observations on the previous stage, related to all 4 exams). Try to avoid collisions in the legend, while also saving the color palette for coloring points by faculty. (1 p.)
 
 ``` {r}
@@ -120,7 +123,8 @@ ggplot(hogwarts_17_weeks)+
        x = "Student origin",
        y = "Total score (Weeks 1-17)",
        fill = "Blood status")+
-  theme_custom
+  theme_custom+
+  theme(plot.title = element_text(hjust = 0.2))
 
 ```
 
@@ -163,7 +167,8 @@ ggplot(hogwarts_17_weeks, aes(x = fct_reorder(bloodStatus, total_score_17_weeks,
              size = 4, 
              fontface = "bold", 
              label.size = 0.5)+
-  theme_custom
+  theme_custom+
+  theme(plot.title = element_text(hjust = 0.2))
 
 ```
 **Interpretation:**
@@ -345,3 +350,57 @@ The Potions boxplot shows a much wider spread of scores for Potions, especially 
 **Conclusion**
 
 The hypothesis holds true for Potions, where pure-blood students tend to perform better due to their cultural background and early exposure to potion-making. However, in other magical subjects like Herbology and Defense Against the Dark Arts, their advantage is less pronounced.
+
+# Additional graph
+
+``` {r}
+# Create the violin plot
+ggplot(hogwarts, aes(x = house, y = result, fill = house)) +
+  geom_violin(trim = TRUE, linewidth = 0.2) +
+  geom_boxplot(width = 0.1, color = "grey30", fill = "white", linewidth = 0.2, outlier.color = NA) +
+  stat_summary(fun = mean, geom = "point", shape = 23, size = 5, fill = "brown", color = "black") +
+  facet_grid(. ~ sex, labeller = as_labeller(c("male" = "Мальчики", "female" = "Девочки"))) +
+  scale_fill_manual(values = c("Gryffindor" = "#C50000", 
+                               "Hufflepuff" = "#ECB939", 
+                               "Ravenclaw" = "#41A6D9", 
+                               "Slytherin" = "#1F5D25"),
+                    name = "Факультет",
+                    labels = c(
+                       "Gryffindor" = "Гриффиндор",
+                       "Hufflepuff" = "Пуффендуй",
+                       "Ravenclaw" = "Когтевран",
+                       "Slytherin" = "Слизерин"
+                    )) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "coral", size = 1) +
+  scale_y_continuous(
+    breaks = seq(-300, 250, by = 50)
+  ) +
+  labs(title = "Баллы студентов Хогвартса",
+       subtitle = "Распределение числа баллов у студентов различных факультетов Хогвартса в 2023-2024 учебном году",
+       y = "Количество очков", 
+       x = "Факультет") +
+  theme_minimal()+
+  theme( 
+    panel.background = element_rect(fill = "white", color = NA),
+  plot.background = element_rect(fill = "white", color = NA),
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  strip.background = element_rect(fill = "grey80", color = "white"),
+  strip.text = element_text(size = 12),
+  plot.title = element_text(size = 14, hjust = 0.5),  
+  plot.subtitle = element_text(size = 9, hjust = 0.5, color = "#6B4226"),
+  axis.text.x = element_blank(),
+  axis.title.x = element_blank(),
+  axis.title.y = element_text(size = 10),
+  legend.title = element_text(size = 12),
+  legend.text = element_text(size = 10, family = "sans", face = "italic"),
+  legend.position = c(0.5, 0.1),
+  legend.key.size = unit(3, "mm")
+)
+
+```
+
+Problems:
+- I tried to add annotate, but it was added to both graphs (Мальчики и Девочки), I couldn't fix it :(
+- Also I wasn't able to understand what the diamonds were represented, so I just add mean function.
+
