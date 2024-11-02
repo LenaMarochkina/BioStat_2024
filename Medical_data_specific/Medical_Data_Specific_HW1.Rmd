@@ -1,0 +1,276 @@
+---
+title: "Medical_Data_Specific_HW1"
+author: "Elena Marochkina"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+bibliography: references.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r liraries}
+suppressMessages({
+library(skimr)
+library(flextable)
+library(ggplot2)
+library(tidyr)
+library(tidyverse)
+library(officer)
+library(pROC)
+})
+
+```
+
+# Read Data
+
+```{r read data}
+data_trauma <- readxl::read_xlsx("trauma.xlsx") %>%
+    mutate(across(where(is.character), as.factor),
+           across(c(id, Death), as.factor),
+           Height = as.numeric(sub('"', '', Height)) * 2.54 / 100, # convert height to m
+           Weight = Weight / 2.2,
+           Hb = na_if(Hb, 0)
+           ) 
+
+skim(data_trauma)
+```
+
+# Descrptive Statistics
+
+Provide descriptive statistics for the variables included in the dataset. 
+
+``` {r descriptive statistics for numeric variables}
+# Function to calculate 95% confidence interval for the mean
+ci_95 <- function(x) {
+  n <- sum(!is.na(x))
+  if (n < 3) return("Н/П*")
+  se <- sd(x, na.rm = TRUE) / sqrt(n)  # Standard Error
+  mean_x <- mean(x, na.rm = TRUE)
+  ci <- c(mean_x - 1.96 * se, mean_x + 1.96 * se)
+  paste0(round(ci[1], 2), " - ", round(ci[2], 2))
+}
+
+# List of descriptive statistics
+statistics <- list(
+  `_Number of values` = ~as.character(sum(!is.na(.x))),
+  `_No data` = ~as.character(sum(is.na(.x))),
+  `_Mean` = ~ifelse(sum(!is.na(.x)) == 0, "NA", as.character(mean(.x, na.rm = TRUE) %>% round(2))),
+  `_Median` = ~ifelse(sum(!is.na(.x)) == 0, "NA", as.character(median(.x, na.rm = TRUE) %>% round(2))),
+  `_SD` = ~ifelse(sum(!is.na(.x)) < 3, "NA", as.character(sd(.x, na.rm = TRUE) %>% round(2))),
+  `_Q1 - Q3` = ~ifelse(sum(!is.na(.x)) == 0, "NA", paste0(as.character(quantile(.x, 0.25, na.rm = TRUE) %>% round(2)), " - ", as.character(quantile(.x, 0.75, na.rm = TRUE) %>% round(2)))),
+  `_IQR` = ~ifelse(sum(!is.na(.x)) == 0, "NA", as.character(IQR(.x, na.rm = TRUE) %>% round(2))),
+  `_95% CI` = ~ci_95(.x),
+  `_min` = ~ifelse(sum(!is.na(.x)) == 0, "NA", as.character(min(.x, na.rm = TRUE) %>% round(2))),
+  `_max` = ~ifelse(sum(!is.na(.x)) == 0, "NA", as.character(max(.x, na.rm = TRUE) %>% round(2)))
+)
+
+# Summarize the statistics for each numeric variable
+data_trauma %>%
+  select(where(is.numeric)) %>%
+  summarise(across(everything(), statistics)) %>%
+  pivot_longer(cols = everything(), names_sep = "__", names_to = c("Variable", "Stat")) %>%
+  rename(`Value` = value) %>%
+  flextable() %>%
+  merge_v("Variable") %>%
+  width(j = c("Variable", "Stat", "Value"), width = 2) %>%
+  autofit() %>%
+  border_inner(border = fp_border(color = "black", width = 1)) %>%
+  border_outer(border = fp_border(color = "black", width = 1))
+
+```
+``` {r descriptive statistics categorical variables}
+# Clean and summarize the categorical data for all factor variables
+data_trauma %>%
+  select(-id, -Name) %>%
+  select(where(is.factor)) %>%
+  pivot_longer(cols = everything(), names_to = "Variable", values_to = "Value") %>%
+  group_by(Variable, Value) %>%
+  summarise(n = n(), .groups = 'drop') %>%
+  group_by(Variable) %>%
+  mutate(`No data` = sum(is.na(Value)),
+         `% by group` = paste0(round((n / sum(n)) * 100, 2), " %") ) %>%
+  ungroup() %>%
+  select(Variable, Value, n, `% by group`, `No data`) %>%
+  arrange(Variable, Value) %>%
+  flextable() %>%
+  merge_v("Variable") %>%
+  autofit() %>%
+  border_inner(border = fp_border(color = "black", width = 1)) %>%
+  border_outer(border = fp_border(color = "black", width = 1))
+
+```
+
+# Hemoglobine level
+
+Additionally, calculate how many patients and what percentage of patients had low hemoglobin levels? Use the following reference values (Male: 13.5–16 g/dL, Female: 12–14 g/dL).
+
+``` {r hemoglobine level}
+# Calculate the total number of observations where hemoglobin Hb levels are low
+total_count <- data_trauma %>%
+  filter((Sex == "Male" & Hb < 13.5) | (Sex == "Female" & Hb < 12)) %>%
+  nrow()
+
+# Create a summary of low Hb counts by Sex
+low_HB <- data_trauma %>%
+  filter((Sex == "Male" & Hb < 13.5) | (Sex == "Female" & Hb < 12)) %>%
+  group_by(Sex) %>%
+  summarise(
+    Count = n(),
+    Percentage = round((n() / total_count) * 100, 2),
+    .groups = 'drop')
+
+# Plot a bar chart with percentage of males and females with low Hb
+ggplot(low_HB, aes(x = Sex, y = Percentage, fill = Sex)) +
+  geom_bar(stat="identity", width=1) +
+  coord_polar("x", start=0) +
+  geom_label(aes(label = paste0(Percentage, "%")),
+             position = position_stack(vjust = 0.5), 
+             size = 6, fill = "white") +
+  theme_minimal() 
+
+```
+
+The percentages are nearly balanced between the two groups:
+
+- Males represent 50.66% of the total sample with low hemoglobin levels.
+- Females account for 49.34% of the sample.
+
+# BMI
+
+Calculate the body mass index of the patients (kg/m2). What was the mean (M (SD)) BMI level of the patients included in the study? What proportion of patients were obese (BMI >30)?
+
+``` {r BMI}
+# Calculate BMI variable
+data_trauma <- data_trauma %>%
+  mutate(
+    BMI = Weight / (Height^2)
+  ) %>%
+  relocate(BMI, .after = Weight)
+
+# Calculate mean and SD for BMI
+mean_BMI <- mean(data_trauma$BMI, na.rm = TRUE)
+sd_BMI <- sd(data_trauma$BMI, na.rm = TRUE)
+
+# Calculate proportion of obese patients
+obese <- mean(data_trauma$BMI > 30, na.rm = TRUE) * 100
+
+cat(sprintf("Mean (M (SD)) BMI: %.2f (%.2f)\n", mean_BMI, sd_BMI))
+cat(sprintf("Proportion of obese patients (BMI > 30): %.2f%%\n", obese))
+```
+
+# ROC
+## ROC Analysis with Hemoglobin Level
+
+What does the ROC curve look like for predicting a fatal outcome within 24 hours based on the variable characterizing the hemoglobin level? Plot a graph. What could cause this shape of the curve?
+
+What is the area under the ROC curve? What is the 95% two-sided CI for the area under the ROC curve?
+
+``` {r roc for HB}
+# Generate the ROC curve
+roc_curve_HB <- roc(data_trauma$Death, data_trauma$Hb, quiet = TRUE)
+
+# Plot the ROC curve
+plot(roc_curve_HB, col = "pink", main = "ROC Curve for Hemoglobin Predicting 24-Hour Fatal Outcome")
+
+# Calculate AUC and 95% CI 
+auc_HB <- auc(roc_curve_HB)
+auc_ci_HB <- ci.auc(roc_curve_HB)
+
+print(paste("AUC:", round(auc_HB, 2)))
+print(paste("AUC 95% CI:", round(auc_ci_HB, 2)))
+
+```
+
+The ROC curve is above the diagonal line (representing random guess), confirming that the model performs better than random guess.
+
+**AUC = 0.71:** this shows that the model has acceptable discrimination. There is a 71% probability that the model will correctly discriminate between a fatal patient and a non-fatal patient based on the hemoglobin level. This value of AUC are considered of limited clinical utility [@corbacioglu2023roc].
+
+The confidence interval reflects the uncertainty around the AUC value. A narrow confidence interval indicates that the AUC value is likely accurate, while a wide confidence interval indicates that the AUC value is less reliable [@corbacioglu2023roc]. 
+
+The *95% CI 0.6763-0.7392* is relatively narrow, which indicates that the AUC value (0.71, as previously calculated) is likely accurate and reliable. 
+
+## ROC analysis with Glasgow Coma Scale
+
+Conduct a ROC analysis and determine which threshold is optimal for predicting death within 24 hours using the Glasgow Coma Scale. What is the sensitivity and specificity of this threshold?
+
+``` {r roc for GCS}
+# Generate the ROC curve
+roc_curve_GCS <- roc(data_trauma$Death, data_trauma$GSC, quiet = TRUE)
+
+# Calculate AUC and 95%CI for AUC
+auc_GCS <- auc(roc_curve_GCS)
+auc_ci_GCS <-ci.auc(roc_curve_GCS)
+
+# Find optimal threshold and coordinates
+optimal_coords <- coords(roc_curve_GCS, "best", ret = c("threshold", "specificity", "sensitivity"), best.method = "youden")
+optimal_threshold <- optimal_coords["threshold"]
+sensitivity <- optimal_coords["sensitivity"]
+specificity <- optimal_coords["specificity"]
+
+# Plot the ROC curve
+plot(roc_curve_GCS, col = "aquamarine", main = "ROC Curve for GCS Predicting 24-Hour Fatal Outcome")
+points(specificity, sensitivity, col = "blue")
+text(specificity, sensitivity, labels = paste("Threshhold:", round(optimal_threshold, 2)), pos = 4, col = "blue")
+
+
+print(paste("AUC:", round(auc_GCS, 2)))
+print(paste("AUC 95% CI:", round(auc_ci_GCS, 2)))
+print(paste("Optimal Threshold:", round(optimal_threshold, 2)))
+```
+
+**AUC Value:** An AUC of 0.91 is considered excellent, indicating that the model is highly effective in distinguishing between outcomes. This means that the GCS score is a strong predictor for identifying patients at risk of a 24-hour fatal outcome.
+
+**Confidence Interval:** The 95% CI for the AUC is 0.90 to 0.93, which confirms the model's reliability.
+
+**Optimal Threshold:** A GCS score of 7.5 suggests that patients with a score below this threshold are more likely to experience a fatal outcome within 24 hours. This threshold could be used as a decision point for clinical interventions or risk stratification.
+
+## Other variables
+
+Which of the quantitative variables in the dataset (including the BMI you calculated earlier) has the largest area under the ROC curve? How can you interpret this knowledge? Which quantitative variable has the smallest area?
+
+``` {r rocs for all numeric vars}
+# Function to create and plot ROC for a numeric variable
+roc_function <- function(predicted_var, var_name) {
+  # Generate the ROC curve
+  roc_curve_var <- roc(data_trauma$Death, predicted_var, quiet = TRUE)
+  
+  # Calculate AUC
+  auc_var <- auc(roc_curve_var)
+  
+  # Find optimal threshold and coordinates
+  optimal_coords <- coords(roc_curve_var, "best", ret = c("threshold", "specificity", "sensitivity"), best.method = "youden")
+  optimal_threshold <- optimal_coords["threshold"]
+  specificity <- optimal_coords["specificity"]
+  sensitivity <- optimal_coords["sensitivity"]
+  
+  # Plot the ROC curve
+  plot(roc_curve_var, col = "blueviolet", main = paste("ROC Curve for", var_name, "\nAUC:", round(auc_var, 2)))
+  points(specificity, sensitivity, col = "orange", pch = 19)
+  text(specificity, sensitivity, labels = paste("Threshold:", round(optimal_threshold, 2)), pos = 4, col = "orange")
+  
+  return(list(auc = auc_var, var_name = var_name))
+}
+
+# Apply the function to all numeric columns in the dataset
+roc_results <- lapply(names(data_trauma)[sapply(data_trauma, is.numeric)], function(var_name) {
+  roc_function(data_trauma[[var_name]], var_name)
+})
+
+# Find the variable with the highest AUC
+max_auc_result <- roc_results[[which.max(sapply(roc_results, function(x) x$auc))]]
+print(paste("Variable with the highest AUC:", max_auc_result$var_name, "with AUC =", round(max_auc_result$auc, 2)))
+
+# Find the variable with the lowest AUC
+min_auc_result <- roc_results[[which.min(sapply(roc_results, function(x) x$auc))]]
+print(paste("Variable with the lowest AUC:", min_auc_result$var_name, "with AUC =", round(min_auc_result$auc, 2)))
+
+```
+
+The FOUR variable has the highest AUC at 0.93, which indicates it is an excellent predictor of a 24-hour fatal outcome. This suggests that "FOUR" has a strong ability to differentiate between cases (patients who experienced a fatal outcome) and controls (patients who did not).
+
+An AUC of 0.48 for the variable "Height" indicates that this variable is a poor predictor for the 24-hour fatal outcome. An AUC of 0.48 is slightly below 0.5, which is the threshold for random guessing. This means that using "Height" as a predictor for a 24-hour fatal outcome performs worse than random chance.
