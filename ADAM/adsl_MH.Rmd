@@ -1,0 +1,128 @@
+---
+title: "ADSL coding"
+author: "Alisa Selezneva"
+date: "2024-10-12"
+output: html_document
+---
+
+<style type="text/css">
+body{
+  font-family: Helvetica;
+  font-size: 12pt;
+}
+/* Headers */
+h1, h2{
+  font-size: 16pt;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(readxl)
+library(openxlsx)
+```
+
+Upload all necessary files:
+
+-   MH_MEDICALHISTORY.xlsx, 
+-   ADSL. xlsx
+
+
+```{r upload}
+
+MH_dataset <- read.xlsx("./data/MH_MEDICALHISTORY.xlsx")
+ADSL_dataset <- read.xlsx("ADSL.xlsx")
+
+```
+
+Get the variables from ADSL:
+
+-   STUDYID;
+-   USUBJID;
+-   TRTP;
+-   TRTPN;
+
+```{r dm}
+ADSL_vars <- 
+  ADSL_dataset %>% 
+  select(STUDYID, SUBJID, USUBJID, 
+         TRTP, TRTPN) %>% 
+  mutate(STUDYID = as.character(STUDYID),
+         USUBJID = as.character(USUBJID),
+         TRTP = as.character(TRTP),
+         TRTPN = as.integer(TRTPN))
+```
+
+Get the variables from Medical History and:
+
+-   STUDYID;
+-   SUBJID;
+-   MHSEQ;
+-   MHCAT;
+-   MHTERM;
+-   MHDECOD;
+-   MHBODSYS; 
+-   MHENRTPT;
+-   MHSTDTC;
+-   MHENDTC;
+
+```{r Medical History}
+# Function to parse dates with partial information
+parse_partial_date <- function(date_col) {
+  # Ensure that all return types are consistent (Date type)
+  parsed <- case_when(
+    is.na(date_col) ~ NA_Date_,  # Explicitly return NA of type Date
+    str_detect(date_col, "^[0-9]{4}$") ~ ymd(paste0(date_col, "-01-01")),  # Only year
+    str_detect(date_col, "^[0-9]{4}-[0-9]{2}$") ~ ymd(paste0(date_col, "-01")),  # Year and month
+    str_detect(date_col, "^[0-9]{4}-[0-9]{2}-[0-9]{2}$") ~ ymd(date_col),  # Full date
+    TRUE ~ NA_Date_  # Fallback for invalid or unrecognized formats
+  )
+}
+
+MH_vars <- 
+  MH_dataset %>% 
+    filter(MHCAT == "Medical History") %>%
+  select(STUDYID, SUBJID, MHSEQ, MHCAT, MHTERM, MHDECOD, MHBODSYS, MHENRTPT, MHSTDTC, MHENDTC) %>%
+  mutate(
+    MHSEQ = as.integer(MHSEQ),
+    MHCAT = as.character(MHCAT),
+    MHTERM = as.character(MHTERM),
+    MHDECOD = as.character(MHDECOD),
+    MHBODSYS = as.character(MHBODSYS),
+    MHSTDTC = parse_partial_date(MHSTDTC),
+    MHENDTC = parse_partial_date(MHENDTC),
+    ASTDT = if_else(is.na(MHSTDTC), "", format(MHSTDTC, "%d.%m.%Y")),
+    ASTDTF = case_when(
+      is.na(MHSTDTC) ~ 'Y',
+      str_detect(as.character(MHSTDTC), "^[0-9]{4}$") ~ 'M',
+      str_detect(as.character(MHSTDTC), "^[0-9]{4}-[0-9]{2}$") ~ 'D',
+      str_detect(as.character(MHSTDTC), "^[0-9]{4}-[0-9]{2}-[0-9]{2}$") ~ '',
+      TRUE ~ ""
+    ),
+    AENDT = if_else(is.na(MHENDTC) | MHENRTPT == 'ONGOING', "", format(MHENDTC, "%d.%m.%Y")),
+    AENDTF = case_when(
+      is.na(MHENDTC) ~ 'Y',
+      str_detect(as.character(MHENDTC), "^[0-9]{4}$") ~ 'M',
+      str_detect(as.character(MHENDTC), "^[0-9]{4}-[0-9]{2}$") ~ 'D',
+      str_detect(as.character(MHENDTC), "^[0-9]{4}-[0-9]{2}-[0-9]{2}$") ~ '',
+      TRUE ~ ""
+    ),
+    MHENRF = if_else(MHENRTPT == 'ONGOING', 'ONGOING', "")
+  )
+
+```
+Join files
+
+``` {r Join files}
+ADSL <- ADSL_dataset %>%
+  left_join(MH_vars, by = c("STUDYID", "SUBJID")) %>%
+    select(STUDYID, USUBJID, TRTP, TRTPN, MHSEQ, MHCAT, MHTERM, MHDECOD, MHBODSYS,MHSTDTC, ASTDT, ASTDTF, MHENDTC, AENDT, AENDTF, MHENRTPT, MHENRF) %>%
+  filter(!is.na(MHTERM))
+```
+
+
+```{r}
+write.xlsx(ADSL, "ADSL_new.xlsx")
+```
+
