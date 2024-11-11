@@ -1,0 +1,58 @@
+---
+title: "Study of the predictive ability of immunological status and clustering features on the development of chronic graft-versus-host disease after allogeneic hematopoietic stem cell transplantation."
+author: "Elena Marochkina"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries}
+library(dplyr)
+library(stringr)
+library(tidyr)
+```
+
+# 1. Read and Clean Data
+
+``` {r clean data}
+# Read data and rename columns
+df <- readxl::read_excel("./data/AI_Tcells_DB.xlsx") 
+
+# Clean the data 
+df_clean <- df %>%
+  # Rename columns
+  rename(
+    Subject_ID = ID,
+    Observation_Days_Count = Time_OS,
+    cGVHD_Diagnosis_Day = cGVHD_time,
+    Cell_Count = Abs_Value
+  ) %>%
+  mutate(
+    # Add flag to indicate which patients experienced cGVHD
+    cGVHD_flag = as.numeric(ifelse(!is.na(cGVHD_Diagnosis_Day), 1, 0)),
+    
+    # Add exact day when blood test was perform 
+    Blood_test_exact_day = case_when(
+      grepl('ДЕНЬ ХРРТПХ_ПЕР.КРОВЬ', df$Names) ~ cGVHD_Diagnosis_Day,
+      grepl('ДЕНЬ ХРРТПХ +', Names) ~ as.numeric(str_extract(Names, "(?<=\\+)\\d+(?=_)")) + cGVHD_Diagnosis_Day,
+      TRUE ~ as.numeric(str_extract(Names, "(?<=\\+)\\d+(?=_)"))
+    ), 
+    
+    # Add blood test group 
+    Blood_test_group = case_when(
+      grepl('ДЕНЬ ХРРТПХ_ПЕР.КРОВЬ', Names) ~ "cGVHD Diagnosis Day",
+      grepl('ДЕНЬ ХРРТПХ \\+', Names) ~ paste0(str_extract(Names, "(?<=\\+)\\d+(?=_)"), " day"),
+      TRUE ~ paste0("Day ", str_extract(Names, "(?<=\\+)\\d+(?=_)"), " After cGVHD")
+    ),
+    
+    # Create exact cell name
+    Cell_name = str_extract(Names, "(?<=/)\\S+")
+  ) %>%
+  select(-Names)
+
+unique_cells_name <- unique(df_clean$Cell_name)
+print(unique_cells_name)
+```
