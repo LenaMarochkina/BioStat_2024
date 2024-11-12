@@ -70,8 +70,8 @@ se <- function(x){
 ```{r}
 hogwarts |> 
   ggplot()+
-  geom_point(aes(x = `Charms.exam`, 
-                 y = `Transfiguration.exam`))+
+  geom_point(aes(x = `Charms exam`, 
+                 y = `Transfiguration exam`))+
   theme_custom
 ```
 
@@ -80,8 +80,8 @@ hogwarts |>
 ```{r}
 scatterStroke <- hogwarts |> 
   ggplot()+
-  geom_point(aes(x = `Charms.exam`, 
-                 y = `Transfiguration.exam`), 
+  geom_point(aes(x = `Charms exam`, 
+                 y = `Transfiguration exam`), 
              shape = 23, 
              size = 3, 
              stroke = 2, 

@@ -31,8 +31,8 @@ Upload all necessary files:
 
 ```{r upload}
 
-MH_dataset <- read.xlsx("./data/MH_MEDICALHISTORY.xlsx")
-ADSL_dataset <- read.xlsx("ADSL.xlsx")
+MH_dataset <- read.xlsx("./SDTM/MH_MEDICALHISTORY.xlsx")
+ADSL_dataset <- read.xlsx("./ADAM-like/ADSL.xlsx")
 
 ```
 
