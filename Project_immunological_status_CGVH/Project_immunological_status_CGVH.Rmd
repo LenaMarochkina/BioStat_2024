@@ -43,16 +43,44 @@ df_clean <- df %>%
     
     # Add blood test group 
     Blood_test_group = case_when(
-      grepl('ДЕНЬ ХРРТПХ_ПЕР.КРОВЬ', Names) ~ "cGVHD Diagnosis Day",
-      grepl('ДЕНЬ ХРРТПХ \\+', Names) ~ paste0(str_extract(Names, "(?<=\\+)\\d+(?=_)"), " day"),
-      TRUE ~ paste0("Day ", str_extract(Names, "(?<=\\+)\\d+(?=_)"), " After cGVHD")
+      grepl('ДЕНЬ ХРРТПХ_ПЕР.КРОВЬ', df$Names) ~ "cGVHD Diagnosis Day",
+      grepl('ДЕНЬ ХРРТПХ +', df$Names) ~ paste0("Day ", str_extract(df$Names, "(?<=\\+)\\d+(?=_)"), " After cGVHD"),
+      TRUE ~ paste0(str_extract(df$Names, "(?<=\\+)\\d+(?=_)"), " day")
     ),
     
     # Create exact cell name
     Cell_name = str_extract(Names, "(?<=/)\\S+")
   ) %>%
-  select(-Names)
+  select(-Names) %>%
+  replace()
 
-unique_cells_name <- unique(df_clean$Cell_name)
-print(unique_cells_name)
+unify_cell_name <- function(cell_name, replacements) {
+  cell_name_unified <- cell_name
+  for (replacement in replacements) {
+    old_value <- replacement[1]
+    new_value <- replacement[2]
+    cell_name_unified <- str_replace_all(cell_name_unified, old_value, new_value)
+  }
+  return(cell_name_unified)
+}
+
+replacements <- list(
+  c("PD1", "PD-1"),
+  c("СТАР2", "STAR2"),
+  c("4", "CD4_"),
+  c("CD4_\\+", "CD4+_"),
+  c("8", "CD8_"),
+  c("CD8_\\+", "CD8+_"),
+  c("Th", "TH"),
+  c("__", "_"),
+  c("+_", "")
+)
+
+# Apply the function to dataframe
+df_clean <- df_clean %>%
+  mutate(
+    Cell_name_unified = Cell_name,
+    Cell_name_unified = unify_cell_name(Cell_name, replacements)
+    )
+
 ```
