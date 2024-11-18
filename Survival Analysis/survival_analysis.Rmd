@@ -1,0 +1,240 @@
+---
+title: "Survival analysis"
+author: "Alexey Zulkarnaev"
+date: "2024-11-16"
+output: html_document
+---
+# Подготовка
+```{r setup}
+library(survival)
+library(survminer)
+library(dplyr)
+
+library(biostat3)
+library(casebase)
+library(gtsummary)
+library(rms)
+```
+
+# Данные
+Загрузили пакеты. Посмотрим на датасет "lung" (встроен в пакет "survival")
+
+```{r data}
+View(lung) # Смотрим на датасет
+str(survival::lung)
+?survival::lung # Можно посмотреть писание
+```
+
+# Кривые Каплана-Мейера
+## Подготовка
+Создадим объект "surv"
+```{r surv}
+surv_object <- Surv(time = lung$time, event = lung$status) #Объект Surv
+# В статусе меньшее число считатется цензурированием, большее - событием
+head(surv_object, 20)
+```
+Посторим модель по данным
+```{r moedl 1}
+fit <- survfit(surv_object ~ 1, data = lung) # Построение модели по данным
+fit
+summary(fit) # Вывод сводной информации
+```
+
+## График одна группа.
+Визуализируем полученные оценки
+
+```{r plot 1}
+p1 <- ggsurvplot(fit, 
+                 data = lung) # Строим график
+p1 # Смотрим на график
+
+p1_2 <- ggsurvplot(fit, 
+                 data = lung,
+                 fun = "event")
+p1_2
+```
+
+##Оценки
+Получим оценку и 95%ДИ медианы выживаемости:
+```{r surv_median}
+q1 <- quantile(fit, probs = c(0.25, 0.5, 0.75),
+               conf.int = TRUE)
+q1
+as.data.frame(q1)
+```
+## Оформляем график.
+
+Дополним наш график:
+```{r plot 1 adv}
+#Дополнительная информация:
+p2 <- ggsurvplot(fit, 
+                 data = lung,
+                 conf.int = TRUE,  # Добавим 95%ДИ
+                 legend = "none", # Уберем легенду, т.к. нет страт
+                 title = "Lung cancer survival curve", # Добавим название графика
+                 surv.median.line = "hv",              # Добавляем медианы
+                 risk.table = TRUE,                    # Добавляем табличку с количеством пациентов
+                 tables.height = 0.2, xscale = "d_m", # Переведем дни в месяцы
+                 break.time.by=365.25*0.5,             # Зададим значения оси абсцисс
+                 xlab = "Time, months")                # Изменим подпись оси абсцисс
+
+p2 
+
+p2$plot <- p2$plot + 
+  scale_x_continuous(breaks = c(0, 182.65, 310, seq(365.25,1022, 182.65)),
+                     labels = c(0, 6, 10, seq(12,34,6))) # Еще один вариант (с временем медианной выживаемости)
+
+p2
+```
+## Дополним оценки.
+Добавим оценки выживаемости в ключевых точках:
+```{r plot 1 adv 2}
+my_times <- c(365.25, 365.25*2)
+my_probs <- c(0.25,0.5,0.75)
+
+q1 <- quantile(fit, my_probs,
+               conf.int = TRUE)
+as.data.frame(q1)
+
+df <- data.frame(
+  times = my_times,
+  probs = summary(fit, my_times)$surv,
+  "CI_lb" = summary(fit, my_times)$lower,
+  "CI_ub" = summary(fit, my_times)$upper)
+df # Получим необходимые оценки
+
+p2$plot + 
+  scale_x_continuous(breaks = c(0, 180, 310, seq(360,1022, 180)),
+                     labels = c(0, 6, 10, seq(12,34,6))) +
+  geom_text(x = 230, y = 0.9,
+            label = "1-year survival probability 0.409 [95%CI 0.345; 0.486]\n2-year survival probability 0.116 [95%CI 0.072; 0.187]",
+            hjust = 0,
+            size = 5, colour = "black")  # Укажем выживаемость в ключевых точках
+```
+
+# Сравним выживаемость в двух группах
+## Подготовка
+страта - пол.
+
+```{r model 2}
+surv_data <- lung
+surv_data$sex <- factor(surv_data$sex, 
+                           levels = c("1", "2"),
+                           labels = c("Male", "Female"))
+
+surv_object <- Surv(time = surv_data$time, event = surv_data$status)
+
+fit_2 <- survfit(surv_object ~ sex, data = surv_data) # Построение модели по данным
+summary(fit_2)
+str(fit_2)
+```
+
+Сравним выживаемость в двух группах (страта - пол):
+```{r plot 2}
+q2 <- quantile(fit_2, probs = c(0.25, 0.75),
+               conf.int = TRUE)
+as.data.frame(q2)
+
+p3 <- ggsurvplot(fit_2, 
+                 data = lung,
+                 title = "Lung cancer survival curve",
+                 conf.int	= TRUE,        
+                 risk.table = TRUE,
+                 tables.height = 0.2,
+                 pval = TRUE,
+                 pval.coord = c(750, 0.7))         
+p3
+
+p3$plot <- p3$plot +
+  geom_segment(aes(x = 144, y = 0, xend = 144, yend = 0.75), linetype = "dashed", color = "red") +
+  geom_segment(aes(x = 457, y = 0, xend = 457, yend = 0.25), linetype = "dashed", color = "red") +
+  geom_segment(aes(x = 226, y = 0, xend = 226, yend = 0.75), linetype = "dashed", color = "blue") +
+  geom_segment(aes(x = 687, y = 0, xend = 687, yend = 0.25), linetype = "dashed", color = "blue")
+
+p3
+
+```
+
+# Получим оценки hazard.
+Получим таблицу выживания.
+```{r haz_1}
+surv_object <- Surv(time = lung$time, event = lung$status)
+lifetab2(surv_object ~ 1, lung, breaks = seq(from = 0,
+                                             to = 1022,
+                                             by = 180))
+
+```
+Вычислим значение hazard для одного периода вручную
+```{r haz_2}
+55 / (180*(142.5 - 0.5*55))
+```
+Вычислим hazard, изменив длину инетервала.
+```{r haz_3}
+surv_data <- lung
+surv_data$time <- round(surv_data$time/365.25, 0)
+surv_object_2 <- Surv(time = surv_data$time, event = surv_data$status)
+lifetab2(surv_object_2 ~ 1, lung, breaks = seq(from = 0,
+                                             to = 4,
+                                             by = 1))
+
+22/(1*(28.5 - 0.5*22))
+```
+
+```{r haz_4}
+surv_data <- lung
+surv_data$status <- if_else(surv_data$status == 2, 1, 0)
+haz <- fitSmoothHazard(status ~ time + sex,
+                data = surv_data,
+                time = "time")
+
+gg_object <- plot(haz,
+                  hazard.params = list(xvar = "time",
+                                       by = "sex",
+                                       alpha = 0.05, # 95% CI
+                                       ylab = "Hazard",
+                                       gg = TRUE)) 
+gg_object +
+  theme_bw()
+```
+
+## Построим модель с одним предиктором.
+```{r 9}
+cox_model <- coxph(Surv(time, status) ~ sex, 
+                   data = surv_data)
+tbl_regression(cox_model, exp = TRUE)
+
+surv_data$sex_inv <- if_else(surv_data$sex == 2, 1, 2)
+cox_model_2 <- coxph(Surv(time, status) ~ sex_inv, 
+                   data = surv_data)
+tbl_regression(cox_model_2, exp = TRUE)
+```
+
+# Проверка пропорциональности рисков
+```{r haz_5}
+ggcoxdiagnostics(cox_model, type = "schoenfeld") +
+  theme_bw()
+
+test.ph <- cox.zph(cox_model)
+ggcoxzph(test.ph)
+print(test.ph)
+```
+
+# Выявление влиятельных наблюдений
+```{r haz_5}
+ggcoxdiagnostics(cox_model, type = "dfbeta", ggtheme = theme_bw())
+ggcoxdiagnostics(cox_model, type = "dfbetas", ggtheme = theme_bw())
+ggcoxdiagnostics(cox_model, type = "deviance", ggtheme = theme_bw()) #Ищем выбросы
+
+
+cox_model_3 <- coxph(Surv(time, status) ~ age, 
+                   data = surv_data)
+
+```
+
+# ДОполнительные диагностические графики
+```{r haz_6}
+ggcoxfunctional(cox_model_3) #Форма связи
+ggcoxdiagnostics(cox_model_3, type = "martingale", ggtheme = theme_bw()) #Ищем выбросы
+ggsurvplot(fit_2, fun = "cloglog") #Пропорциональность рисков
+```
+
