@@ -1,0 +1,262 @@
+---
+title: "Data_visualization_HW_2"
+author: "Elena Marochkina"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 1
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(readr)
+library(tidyverse)
+library(ggplot2)
+library(RColorBrewer)
+library(ggpubr)
+library(rstatix)
+library(ggcorrplot)
+library(GGally)
+library(pheatmap)
+
+```
+
+# Read and glimpse data
+
+``` {r read and glimpse}
+df_init <- readRDS("very_low_birthweight.RDS")
+
+skimr::skim(df_init)
+```
+
+# Task 1
+
+Download the very_low_birthweight.RDS dataset (in your homework folder).
+This is data on 671 very low birth weight (<1600 grams) infants collected at Duke University Medical Center by Dr. Michael O'Shea from 1981 to 1987. See the description of the variables here. The outcome variables are the 'dead' column and the time from birth to death or discharge (derived from 'birth' and 'exit'. 7 patients were discharged before birth).
+Make a copy of the dataset, remove columns with more than 100 missing values, and then remove all rows with missing values.
+
+``` {r delete missed data}
+df <- df_init %>%
+  select(-lol, -magsulf, -pvh, -ivh, -ipe) %>%
+  filter(complete.cases(.))
+```
+
+# Task 2
+
+Plot density function plots for numeric variables. Remove outliers if any. Transform categorical variables into factors. For any two numeric variables, color the plot by the variable ‘inout’.
+
+``` {r density functions}
+# Define a robust remove_outliers function
+remove_outliers <- function(x) {
+  mean_x <- mean(x)
+  sd_x <- sd(x)
+  x[x < (mean_x - 3 * sd_x) | x > (mean_x + 3 * sd_x)] <- NA
+  return(x)
+}
+
+# Apply outlier removal to numeric variables
+numeric_vars <- sapply(df, is.numeric)
+df <- df %>%
+  mutate(across(where(is.numeric), remove_outliers)) %>% drop_na()
+
+# Transform categorical variables into factors
+df <- df %>%
+  mutate(across(where(is.character), as.factor))
+
+  
+# Plot density functions for numeric variables
+numeric_cols <- names(df)[numeric_vars]
+
+for (col in numeric_cols) {
+  p <- ggplot(df, aes_string(x = col)) +
+    geom_density(fill = "violet", alpha = 0.5) +
+    labs(title = paste("Density plot of", col), x = col, y = "Density") +
+    theme_minimal()
+  print(p)
+}
+
+ggplot(df, aes_string(x = "birth", fill = "inout")) +
+    geom_density(alpha = 0.4) +
+    labs(title = "Density plot of birth", x = "birth", y = "Density") +
+    scale_fill_manual(values = brewer.pal(n = 4, name = "Set3")) +
+    theme_minimal()
+
+ggplot(df, aes_string(x = "lowph", fill = "inout")) +
+    geom_density(alpha = 0.4) +
+    labs(title ="Density plot of lowPH", x = "lowPH", y = "Density") +
+    scale_fill_manual(values = brewer.pal(n = 4, name = "Set3")) +
+    theme_minimal()
+
+```
+
+# Task 3
+
+Conduct a test comparing the values of the 'lowph' column between groups in the inout variable. Determine the type of statistical test yourself. Visualize the result using the 'rstatix' library. How would you interpret the result if you knew that a lower lowph value was associated with lower survival?
+
+``` {r rstatix}
+# Perform the t-test
+stat.test <- t_test(lowph ~ inout, data = df)
+
+# Add the y.position and formate numbers
+stat.test <- stat.test %>%
+  mutate(y.position = 8,
+         p = formatC(p, format = "f", digits = 7)) 
+
+# Create the box plot
+p <- ggboxplot(
+  df, x = "inout", y = "lowph")
+
+# Add the p-value annotation
+p + stat_pvalue_manual(stat.test, label = "T-test, p = {p}", y.position = 8) +
+  labs(title = "Comparison of LowPH Between Groups",
+       x = "In/Out Group",
+       y = "LowPH") +
+  theme_minimal()
+```
+
+A p-value of < 0.00001 indicates that we can reject the H0 that the mean lowpH between groups "born at Duke" and "transported" are the same. If a lower lowph is associated with worse survival the group with significantly lower lowph values "transported" group likely has a worse survival outcome.
+
+# Task 4 
+
+Make a new dataframe in which you leave only continuous or rank data, except for 'birth', 'year' and 'exit'. Perform a correlation analysis of this data. Plot any two types of graphs to visualize the correlations.
+
+``` {r numeric data correlation}
+df_new <- df %>%
+  select(where(is.numeric)) %>%
+  select(-birth, -year, -exit)
+
+# Perform correlation analysis
+correlation_matrix <- cor(df_new, use = "complete.obs")
+
+# heatmap of the correlation matrix
+ggcorrplot(correlation_matrix, 
+           method = "circle", 
+           type = "lower", 
+           lab = TRUE, 
+           lab_size = 2, 
+           colors = c("blue", "white", "red"), 
+           title = "Correlation Heatmap",
+           legend.title = "Correlation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Define the custom lower panel function
+suppressWarnings({
+  # Define the custom lower panel function
+  lower <- function(data, mapping, method = "lm", ...) {
+    ggplot(data = data, mapping = mapping) +
+      geom_smooth(method = method, color = "blue", se = FALSE, ...)
+  }
+
+  # Generate the pair plot
+  p <- ggpairs(
+    df_new, 
+    progress = FALSE,
+    lower = list(continuous = wrap(lower, method = "lm")),
+    upper = list(continuous = wrap("cor", size = 2))
+  ) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+})
+
+print(p)
+```
+
+# Task 5 
+
+Build a hierarchical clustering on this dataframe.
+
+``` {r hierarchical clustering}
+# Scale the data
+df_scaled <- scale(df_new)
+
+# Compute the distance matrix
+df_cluster <- dist(df_scaled, method = "euclidean")
+
+# Perform hierarchical clustering with the "complete" method
+res.hc <- hclust(df_cluster, method = "complete")
+
+# Plot the dendrogram
+plot(res.hc, cex = 0.5, hang = -1, main = "Cluster Dendrogram")
+
+# Cut the tree into 4 groups and highlight them
+rect.hclust(res.hc, k = 4, border = 2:5)
+```
+
+# Task 6
+
+Make a simultaneous plot of heatmap and hierarchical clustering. Interpret the result.
+
+``` {r heatmap + hierarchical clustering}
+# Standardize the data
+df_scaled <- scale(df_new)
+
+# Create a heatmap with hierarchical clustering
+pheatmap(
+  df_scaled, 
+  clustering_distance_rows = "euclidean",
+  clustering_distance_cols = "euclidean",
+  clustering_method = "complete",
+  cutree_rows = 4,    
+  cutree_cols = 4,    
+  color = colorRampPalette(c("blue", "white", "red"))(50), 
+  main = "Heatmap with Hierarchical Clustering",
+  fontsize = 10
+)
+```
+
+Variables grouped together (e.g., gest, lowph, bwt) might be strongly correlated or share similar distributions across observations.
+Some variables, like lol and vent, appear distinct in their clusters, potentially representing unique behaviors.
+
+# Task 7
+
+Perform PCA analysis on this data. Interpret the result. Should this data be scaled before performing PCA?
+
+``` {r PSA}
+# Load necessary libraries
+library(dplyr)
+library(ggplot2)
+library(factoextra)
+library(caret)
+
+# delete near zero variance (PSA cant be performed without this)
+nzv <- nearZeroVar(df_cleaned, saveMetrics = TRUE)
+df_cleaned <- df_cleaned[, !nzv$nzv]
+
+# Scale the data
+df_scaled <- scale(df_cleaned)
+
+# Perform PCA
+pca_result <- prcomp(df_scaled, center = TRUE, scale. = TRUE)
+
+# PCA Summary
+summary(pca_result)
+
+# Visualize explained variance
+fviz_eig(pca_result, addlabels = TRUE, ylim = c(0, 50))
+
+# PCA Biplot
+fviz_pca_biplot(
+  pca_result,
+  geom.ind = "point",
+  col.ind = "blue",
+  col.var = "red",
+  repel = TRUE 
+)
+```
+
+PC1 explains 29% of the variance, the largest contribution among all components.
+PC2 explains 12.1%, and PC3 explains 10.9%.
+Together, the first 3 components explain about 52% of the variance.
+
+Dim1 Interpretation:
+
+hospstay, vent, pda, and cld are strongly associated with Dim1.
+This suggests that Dim1 primarily captures variability related to clinical or procedural factors.
+Dim2 Interpretation:
+
+lowph, bwt, apg1, and gest are strongly associated with Dim2.
+Dim2 likely represents variability related to physiological or neonatal factors.
+
