@@ -210,9 +210,10 @@ pheatmap(
 Variables grouped together (e.g., gest, lowph, bwt) might be strongly correlated or share similar distributions across observations.
 Some variables, like lol and vent, appear distinct in their clusters, potentially representing unique behaviors.
 
-# Task 7
+# Task 7 and 8
 
 Perform PCA analysis on this data. Interpret the result. Should this data be scaled before performing PCA?
+Create a biplot for PCA. Color it by the value of the 'dead' column.
 
 ``` {r PSA}
 # Load necessary libraries
@@ -237,14 +238,20 @@ summary(pca_result)
 # Visualize explained variance
 fviz_eig(pca_result, addlabels = TRUE, ylim = c(0, 50))
 
-# PCA Biplot
+pca_data <- as.data.frame(pca_result$x)
+pca_data$dead <- df$dead  # Replace `df$dead` with the correct reference if necessary
+
+# PCA Biplot with coloring by 'dead' column
 fviz_pca_biplot(
   pca_result,
-  geom.ind = "point",
-  col.ind = "blue",
-  col.var = "red",
-  repel = TRUE 
-)
+  geom.ind = "point", 
+  col.ind = pca_data$dead,  
+  palette = c("blue", "red"),  
+  legend.title = "Dead", 
+  col.var = "black",         
+  repel = TRUE       
+) +
+  labs(title = "PCA Biplot Colored by 'Dead'", x = "PC1", y = "PC2")
 ```
 
 PC1 explains 29% of the variance, the largest contribution among all components.
