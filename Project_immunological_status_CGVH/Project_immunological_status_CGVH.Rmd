@@ -6,13 +6,19 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE, echo = TRUE)
 ```
 
 ```{r libraries}
 library(dplyr)
 library(stringr)
 library(tidyr)
+library(flextable)
+library(officer)
+library(tibble)
+library(ggplot2)
+library(reshape2)
+library(pheatmap)
 ```
 
 # 1. Read and Clean Data
@@ -40,13 +46,6 @@ df_clean <- df %>%
     # Add flag to indicate which patients experienced cGVHD
     cGVHD_flag = as.numeric(ifelse(!is.na(cGVHD_Diagnosis_Day), 1, 0)),
     
-    # Add exact day when blood test was perform 
-    Blood_test_exact_day = case_when(
-      grepl('ДЕНЬ ХРРТПХ_ПЕР.КРОВЬ', df$Names) ~ cGVHD_Diagnosis_Day,
-      grepl('ДЕНЬ ХРРТПХ +', Names) ~ as.numeric(str_extract(Names, "(?<=\\+)\\d+(?=_)")) + cGVHD_Diagnosis_Day,
-      TRUE ~ as.numeric(str_extract(Names, "(?<=\\+)\\d+(?=_)"))
-    ), 
-    
     # Add blood test group 
     Blood_test_day = case_when(
       grepl('ДЕНЬ ХРРТПХ_ПЕР.КРОВЬ', df$Names) ~ "cGVHD",
@@ -57,7 +56,7 @@ df_clean <- df %>%
     # Create exact cell name
     Cell_name = str_extract(Names, "(?<=/).*")
   ) %>%
-  select(-Names, -Blood_test_exact_day)
+  select(-Names)
 
 unify_cell_name <- function(cell_name, replacements) {
   cell_name_unified <- cell_name
@@ -79,7 +78,8 @@ replacements <- list(
   c("8", "CD8_"),
   c("CD8_+", "CD8+_"),
   c("Th", "TH"),
-  c("__", "_")
+  c("__", "_"),
+  c("_ ", "_")
 )
 
 # Apply the function to dataframe
@@ -102,7 +102,14 @@ print(unique_cells_name)
 rm(duplicates, replacements, unify_cell_name)
 ```
 
-# Rearrange data
+**Crucial steps:**
+
+1. cGVHD Flag: Adds a flag (cGVHD_flag) to indicate if a patient experienced chronic GVHD (1 if cGVHD_Diagnosis_Day is not NA, otherwise 0).
+2. Blood Test Timing: classifies the blood test timing into groups (e.g., cGVHD, +30_cGVHD).
+3. Cell Name Parsing: Extracts the exact immune cell name from the Names column.
+4. Defines a function unify_cell_name to standardize cell names using a list of replacements (e.g., PD1 -> PD-1, 4 -> CD4_).
+
+## 1.1. Rearrange Data
 
 ```{r rearrange data}
 
@@ -167,5 +174,246 @@ if (length(clean_vector) != length(transformed_vector)) {
   }
 }
 
+# Function to rearrange columns
+rearrange_columns <- function(data) {
+  # Replace "__" with "_" in column names
+  colnames(data) <- gsub("__", "_", colnames(data))
+  
+  # Define the order 
+  desired_order <- c("_30", "_60", "_90", "_180", "_365", "_cGVHD", "_30cGVHD", "_60cGVHD", "_90cGVHD", "_180cGVHD")
+  fixed_columns <- c("Subject_ID", "Observation_Days_Count", "cGVHD_Diagnosis_Day", "cGVHD_flag")
+  other_columns <- setdiff(colnames(data), fixed_columns)
+  
+  # Rearrange the remaining columns based on the desired order of suffixes
+  ordered_columns <- unlist(lapply(desired_order, function(suffix) {
+    grep(paste0(suffix, "$"), other_columns, value = TRUE)
+  }))
+  
+  # Combine fixed columns and ordered columns
+  final_order <- c(fixed_columns, ordered_columns)
+  
+  data <- data[, final_order, drop = FALSE]
+  
+  return(data)
+}
+
+# Apply the function to df_transformed
+df_transformed <- rearrange_columns(df_transformed)
+
 rm(unique_days, df_clean_sorted, clean_vector, contains_multiple_values, mismatches, multi_value_cells, random_patient, transformed_vector)
 ```
+**Crucial steps:**
+
+1. Reshape the data, creating separate columns for each combination of Cell_name_unified and Blood_test_day. Missing values are filled with NA.
+2. Checks if any transformed cell contains multiple values 
+3. Randomly selects a patient and compares their raw Cell_Count data.
+
+# 2. Descriptive Statistics
+
+``` {r descriptive statistics}
+
+# Prepare df_transformed
+df_transformed <- df_transformed %>%
+  mutate(
+    Subject_ID = as.factor(Subject_ID),
+    cGVHD_flag = as.factor(cGVHD_flag)
+  )
+
+# List of descriptive statistics
+# List of descriptive statistics
+statistics <- list(
+  `Number of values` = ~as.character(sum(!is.na(.x))),
+  `No data` = ~as.character(sum(is.na(.x))),
+  `Mean` = ~ifelse(sum(!is.na(.x)) == 0, "NA", as.character(mean(.x, na.rm = TRUE) %>% round(2))),
+  `Median` = ~ifelse(sum(!is.na(.x)) == 0, "NA", as.character(median(.x, na.rm = TRUE) %>% round(2))),
+  `SD` = ~ifelse(sum(!is.na(.x)) < 3, "NA", as.character(sd(.x, na.rm = TRUE) %>% round(2))),
+  `min` = ~ifelse(sum(!is.na(.x)) == 0, "NA", as.character(min(.x, na.rm = TRUE) %>% round(2))),
+  `max` = ~ifelse(sum(!is.na(.x)) == 0, "NA", as.character(max(.x, na.rm = TRUE) %>% round(2)))
+)
+
+# Summarize the statistics for each numeric variable and make variables into columns
+df_summary <- df_transformed %>%
+  select(where(is.numeric)) %>%
+  summarise(across(everything(), statistics, .names = "{.col}__{.fn}")) %>%
+  pivot_longer(cols = everything(), names_sep = "__", names_to = c("Variable", "Stat"), values_to = "Value") %>%
+  pivot_wider(names_from = Stat, values_from = Value) %>%
+  slice(1:25)
+
+# Create a flextable for the summary
+flextable(df_summary) %>%
+  autofit() %>%
+  border_inner(border = fp_border(color = "black", width = 1)) %>%
+  border_outer(border = fp_border(color = "black", width = 1))
+
+# Clean and summarize the categorical data for all factor variables
+df_transformed %>%
+  select(-Subject_ID) %>%
+  select(where(is.factor)) %>%
+  pivot_longer(cols = everything(), names_to = "Variable", values_to = "Value") %>%
+  group_by(Variable, Value) %>%
+  summarise(n = n(), .groups = 'drop') %>%
+  group_by(Variable) %>%
+  mutate(`No data` = sum(is.na(Value)),
+         `% by group` = (n / sum(n)) * 100) %>%
+  ungroup() %>%
+  select(Variable, Value, n, `% by group`, `No data`) %>%
+  arrange(Variable, Value) %>%
+  flextable() %>%
+  merge_v("Variable") %>%
+  autofit() %>%
+  border_inner(border = fp_border(color = "black", width = 1)) %>%
+  border_outer(border = fp_border(color = "black", width = 1))
+
+rm(df_summary, statistics)
+```
+
+The resulting table is too large and complex for effective understanding due to the number of numeric variables, but it highlights a high proportion of missing data (NA values).
+
+# 3. Prediction of cGVHD outcome
+## 3.1. Define DataSet
+
+Survival Analysis are planned. 
+
+*Event:* Diagnosis of cGVHD (cGVHD_flag == 1).
+
+*Survival Time:*
+
+- For patients with cGVHD: cGVHD_Diagnosis_Day as the survival time.
+- For patients without cGVHD: Observation_Days_Count as the censored survival time.
+
+*Perform PCA to reduce 167 variables into fewer components that explain the maximum variance!*
+
+``` {r define dataset Prediction of cGVHD outcome}
+# Define the exact suffixes of interest
+desired_suffixes <- c("_30", "_60", "_90", "_180", "_365", "_cGVHD")
+
+# Regex pattern to include columns ending with desired suffixes
+include_pattern <- paste0("(", paste0(desired_suffixes, collapse = "|"), ")$")
+
+# Regex pattern to exclude columns like _90cGVHD, _60cGVHD, etc.
+exclude_pattern <- "_[0-9]+_cGVHD$"
+
+# Select columns that match the include pattern and do not match the exclude pattern
+df_cGVHD_prediction <- df_transformed %>%
+  select(Subject_ID, Observation_Days_Count, cGVHD_Diagnosis_Day, cGVHD_flag, 
+         matches(include_pattern)) %>%
+  select(-matches(exclude_pattern))
+```
+
+**Crucial steps:**
+
+1. The dataset (df_cGVHD_prediction) includes immune cell measurements at specific time points (_30, _60, _90, _180, _365, and _cGVHD) while excluding those associated with timing after chronic GVHD (e.g., _90_cGVHD).
+
+## 3.2. Check for Missing Data
+
+```{r check for missing data}
+# Function to calculate percentage of missing values by columns and remove those exceeding a threshold
+remove_cols_with_na <- function(data, threshold = 20, always_keep = c("Subject_ID", "Observation_Days_Count", "cGVHD_Diagnosis_Day", "cGVHD_flag")) {
+  # Calculate the percentage of missing values for each column
+  na_percent <- colMeans(is.na(data)) * 100
+
+  cols_to_keep <- names(na_percent)[na_percent <= threshold]
+  cols_to_keep <- unique(c(cols_to_keep, always_keep))
+
+  cols_to_keep <- intersect(cols_to_keep, names(data))
+  
+  # Subset the data to keep only the desired columns
+  cleaned_data <- data[, cols_to_keep, drop = FALSE]
+  
+  return(cleaned_data)
+}
+
+# Apply the function to your dataset
+df_cGVHD_prediction <- remove_cols_with_na(
+  data = df_cGVHD_prediction
+)
+
+```
+
+**Crucial steps:**
+
+1. Columns with more than *20%* missing values were removed to ensure data quality (from 998 to 167 variables).
+
+# 4. Diagnostics of cGVHD
+
+Comparison on the day of the onset of chronic GVHD with the closest points in terms of timing in patients without chronic GVHD.
+
+*Group 1:* Patients diagnosed with cGVHD (cGVHD_flag = 1).
+*Group 2: *Patients without cGVHD (cGVHD_flag = 0).
+
+- For Group 1, will be used data from the day of cGVHD onset (cGVHD_Diagnosis_Day).
+- For Group 2, the closest time point to the median diagnosis day of Group 1 (Median_Diagnosis_Day) is 180 days.
+
+Due to large ammount of immune cell markers (168):
+1. Cluster immune cell markers to identify groups of similar variables.
+2. After clustering, perform statistical comparisons for clasters.
+
+## 4.1. Define Data
+
+``` {r Diagnostics of cGVHD choose the second group }
+# Plot the density plot for cGVHD Diagnosis Day
+df_transformed %>%
+  filter(cGVHD_flag == 1) %>%
+  ggplot(aes(x = cGVHD_Diagnosis_Day)) +
+  geom_density(fill = "blue", alpha = 0.7) +
+  theme_minimal() +
+  labs(
+    title = "Distribution of cGVHD Diagnosis Day",
+    x = "cGVHD Diagnosis Day",
+    y = "Density"
+  )
+
+# Identify and remove outliers using the three-sigma rule
+filtered_diagnosis_day <- df_transformed %>%
+  filter(cGVHD_flag == 1) %>%
+  select(Subject_ID, cGVHD_Diagnosis_Day)
+
+# Calculate mean and standard deviation
+mean_value <- mean(filtered_diagnosis_day$cGVHD_Diagnosis_Day, na.rm = TRUE)
+sd_value <- sd(filtered_diagnosis_day$cGVHD_Diagnosis_Day, na.rm = TRUE)
+
+lower_bound <- mean_value - 3 * sd_value
+upper_bound <- mean_value + 3 * sd_value
+
+# Remove outliers and create a new dataframe
+df_diagnostic <- df_transformed %>%
+  filter(
+    cGVHD_flag == 1 & 
+    cGVHD_Diagnosis_Day >= lower_bound & 
+    cGVHD_Diagnosis_Day <= upper_bound
+  )
+
+cat("Number of removed outliers:", nrow(df_transformed %>% filter(cGVHD_flag == 1)) - nrow(df_diagnostic), "\n")
+
+# Calculate the median of the cleaned data
+median_diagnosis_day <- median(df_diagnostic$cGVHD_Diagnosis_Day, na.rm = TRUE)
+cat("Median Diagnosis Day after removing outliers:", median_diagnosis_day, "\n")
+
+# Regex pattern to include columns ending with desired suffixes
+include_pattern <- paste0("(", paste0(c("_180", "_cGVHD"), collapse = "|"), ")$")
+
+# Regex pattern to exclude columns like _90cGVHD, _60cGVHD, etc.
+exclude_pattern <- "_[0-9]+_cGVHD$"
+
+# Select columns that match the include pattern and do not match the exclude pattern
+df_diagnostic <- df_diagnostic %>%
+  select(Subject_ID, Observation_Days_Count, cGVHD_Diagnosis_Day, cGVHD_flag, 
+         matches(include_pattern)) %>%
+  select(-matches(exclude_pattern))
+```
+
+## 4.2 Check for Missing Data
+
+``` {r Check for Missing Data diagnostic}
+# Apply the function to your dataset
+df_diagnostic <- remove_cols_with_na(
+  data = df_cGVHD_prediction
+)
+
+```
+
+**Crucial steps:**
+
+1. Columns with more than *20%* missing values were removed to ensure data quality (from 336 to 168 variables).
+
+# 5. Immunological Profiles of Patients with or without cGVHD
