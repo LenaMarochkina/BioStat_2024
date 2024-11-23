@@ -304,12 +304,34 @@ df_cGVHD_prediction <- df_transformed %>%
 
 1. The dataset (df_cGVHD_prediction) includes immune cell measurements at specific time points (_30, _60, _90, _180, _365, and _cGVHD) while excluding those associated with timing after chronic GVHD (e.g., _90_cGVHD).
 
+```{r visualisation after choosing necessary vars}
+initial_cols <- ncol(df_transformed)
+final_cols <- ncol(df_cGVHD_prediction)
+
+reduction_data <- data.frame(
+  Step = c("Initial Variables", "After time points were choosen "),
+  Variables = c(initial_cols, final_cols)
+)
+
+ggplot(reduction_data, aes(x = Step, y = Variables, fill = Step)) +
+  geom_bar(stat = "identity", width = 0.6) +
+  geom_text(aes(label = Variables), vjust = 1.5, size = 4) +
+  scale_fill_manual(values = c("#1f78b4", "#33a02c")) +
+  theme_minimal() +
+  labs(
+    title = "Reduction of Variables Due to Missing Data",
+    x = "Step",
+    y = "Number of Variables"
+  )
+
+```
+
 ## 3.2. Check for Missing Data
 
 ```{r check for missing data}
-# Function to calculate percentage of missing values by columns and remove those exceeding a threshold
+
 remove_cols_with_na <- function(data, threshold = 20, always_keep = c("Subject_ID", "Observation_Days_Count", "cGVHD_Diagnosis_Day", "cGVHD_flag")) {
-  # Calculate the percentage of missing values for each column
+  # Calculate the percentage of missing values
   na_percent <- colMeans(is.na(data)) * 100
 
   cols_to_keep <- names(na_percent)[na_percent <= threshold]
@@ -324,7 +346,7 @@ remove_cols_with_na <- function(data, threshold = 20, always_keep = c("Subject_I
 }
 
 # Apply the function to your dataset
-df_cGVHD_prediction <- remove_cols_with_na(
+df_cGVHD_prediction_clean <- remove_cols_with_na(
   data = df_cGVHD_prediction
 )
 
@@ -333,6 +355,53 @@ df_cGVHD_prediction <- remove_cols_with_na(
 **Crucial steps:**
 
 1. Columns with more than *20%* missing values were removed to ensure data quality (from 998 to 167 variables).
+
+```{r visualisation after missing data deleting}
+initial_cols <- ncol(df_cGVHD_prediction)
+final_cols <- ncol(df_cGVHD_prediction_clean)
+
+reduction_data <- data.frame(
+  Step = c("Initial Variables", "After Removing High NA"),
+  Variables = c(initial_cols, final_cols)
+)
+
+ggplot(reduction_data, aes(x = Step, y = Variables, fill = Step)) +
+  geom_bar(stat = "identity", width = 0.6) +
+  geom_text(aes(label = Variables), vjust = 1.5, size = 4) +
+  scale_fill_manual(values = c("#1f78b4", "#33a02c")) +
+  theme_minimal() +
+  labs(
+    title = "Reduction of Variables Due to Missing Data",
+    x = "Step",
+    y = "Number of Variables"
+  )
+
+```
+
+# 3.4. Visualisation
+
+```{r visualisation}
+
+# Select relevant numeric columns for correlation
+correlation_data <- df_cGVHD_prediction_clean %>%
+  select(where(is.numeric), cGVHD_Diagnosis_Day, Observation_Days_Count) %>%
+  drop_na()  # Drop rows with NA values to compute correlations
+
+# Compute correlation matrix
+cor_matrix <- cor(correlation_data, use = "complete.obs")
+
+# Hierarchical clustering and heatmap
+pheatmap(cor_matrix,
+         cluster_rows = TRUE,
+         cluster_cols = TRUE,
+         display_numbers = FALSE,
+         fontsize_row = 2,
+         fontsize_col = 2,
+         main = "Clustered Heatmap for Survival Variables",
+         width = 20, 
+        height = 20  )
+
+```
 
 # 4. Diagnostics of cGVHD
 
