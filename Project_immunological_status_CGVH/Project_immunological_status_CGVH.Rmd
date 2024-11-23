@@ -21,6 +21,12 @@ library(tidyr)
 # Read data and rename columns
 df <- readxl::read_excel("./data/AI_Tcells_DB.xlsx") 
 
+# Check if any duplicates are presented
+duplicates <- df %>%
+  group_by(ID, Time_OS, cGVHD_time, Names) %>%
+  filter(n() > 1) %>%
+  ungroup()  
+
 # Clean the data 
 df_clean <- df %>%
   # Rename columns
@@ -42,23 +48,24 @@ df_clean <- df %>%
     ), 
     
     # Add blood test group 
-    Blood_test_group = case_when(
-      grepl('ДЕНЬ ХРРТПХ_ПЕР.КРОВЬ', df$Names) ~ "cGVHD Diagnosis Day",
-      grepl('ДЕНЬ ХРРТПХ +', df$Names) ~ paste0("Day ", str_extract(df$Names, "(?<=\\+)\\d+(?=_)"), " After cGVHD"),
-      TRUE ~ paste0(str_extract(df$Names, "(?<=\\+)\\d+(?=_)"), " day")
+    Blood_test_day = case_when(
+      grepl('ДЕНЬ ХРРТПХ_ПЕР.КРОВЬ', df$Names) ~ "cGVHD",
+      grepl('ДЕНЬ ХРРТПХ +', df$Names) ~ paste0(str_extract(df$Names, "(?<=\\+)\\d+(?=_)"), "_cGVHD"),
+      TRUE ~ str_extract(df$Names, "(?<=\\+)\\d+(?=_)")
     ),
     
     # Create exact cell name
-    Cell_name = str_extract(Names, "(?<=/)\\S+")
+    Cell_name = str_extract(Names, "(?<=/).*")
   ) %>%
-  select(-Names) %>%
-  replace()
+  select(-Names, -Blood_test_exact_day)
 
 unify_cell_name <- function(cell_name, replacements) {
   cell_name_unified <- cell_name
   for (replacement in replacements) {
     old_value <- replacement[1]
     new_value <- replacement[2]
+    # Escape regex special characters in old_value
+    old_value <- str_replace_all(old_value, "([\\+\\*\\?\\|\\(\\)\\[\\]\\{\\}\\^\\$\\.])", "\\\\\\1")
     cell_name_unified <- str_replace_all(cell_name_unified, old_value, new_value)
   }
   return(cell_name_unified)
@@ -68,12 +75,11 @@ replacements <- list(
   c("PD1", "PD-1"),
   c("СТАР2", "STAR2"),
   c("4", "CD4_"),
-  c("CD4_\\+", "CD4+_"),
+  c("CD4_+", "CD4+_"),
   c("8", "CD8_"),
-  c("CD8_\\+", "CD8+_"),
+  c("CD8_+", "CD8+_"),
   c("Th", "TH"),
-  c("__", "_"),
-  c("+_", "")
+  c("__", "_")
 )
 
 # Apply the function to dataframe
@@ -83,4 +89,83 @@ df_clean <- df_clean %>%
     Cell_name_unified = unify_cell_name(Cell_name, replacements)
     )
 
+# Check for duplicates for control 
+duplicates <- df_clean %>%
+  group_by(Subject_ID, Observation_Days_Count, cGVHD_Diagnosis_Day, cGVHD_flag, Blood_test_day, Cell_name) %>%
+  filter(n() > 1) %>%
+  ungroup() 
+
+# Check the unique cells name 
+unique_cells_name <- unique(df_clean$Cell_name_unified)
+print(unique_cells_name)
+
+rm(duplicates, replacements, unify_cell_name)
+```
+
+# Rearrange data
+
+```{r rearrange data}
+
+# Check the number of unique days when analysis were performed
+unique_days <- unique(df_clean$Blood_test_day)
+print(unique_days)
+
+# Transform the dataframe
+df_transformed <- df_clean %>%
+  mutate(new_column = paste(Cell_name_unified, Blood_test_day, sep = "_")) %>%
+  pivot_wider(
+    id_cols = c(Subject_ID, Observation_Days_Count, cGVHD_Diagnosis_Day, cGVHD_flag),
+    names_from = new_column, 
+    values_from = Cell_Count, 
+    values_fill = list(Cell_Count = NA)
+  )
+
+# Check if in any cell contain more than 1 number
+multi_value_cells <- apply(df_transformed, 2, function(column) {
+  any(grepl(",", column, fixed = TRUE) | grepl(" ", column))
+})
+
+contains_multiple_values <- ifelse(any(multi_value_cells), "Yes", "No")
+print(contains_multiple_values)
+
+
+# Set a seed for reproducibility
+set.seed(123)
+
+# Select a random patient
+random_patient <- sample(unique(df_clean$Subject_ID), 1)
+
+df_clean_sorted <- df_clean %>%
+  filter(Subject_ID == random_patient)
+clean_vector <- df_clean_sorted$Cell_Count
+
+transformed_vector <- df_transformed %>%
+  filter(Subject_ID == random_patient) %>%
+  select(-Subject_ID, -Observation_Days_Count, -cGVHD_Diagnosis_Day, -cGVHD_flag) %>%
+  unlist() %>%
+  as.numeric()
+
+transformed_vector <- transformed_vector[!is.na(transformed_vector)]
+
+if (length(clean_vector) != length(transformed_vector)) {
+  print(paste("Mismatch in lengths for patient:", random_patient))
+  print(paste("Length of clean vector:", length(clean_vector)))
+  print(paste("Length of transformed vector:", length(transformed_vector)))
+} else {
+  mismatches <- which(clean_vector != transformed_vector)
+  
+  if (length(mismatches) == 0) {
+    print(paste("All values match for patient:", random_patient))
+  } else {
+    print(paste("Mismatches found for patient:", random_patient))
+    print("Indexes of mismatches:")
+    print(mismatches)
+    print("Clean vector values at mismatched indexes:")
+    print(clean_vector[mismatches])
+    print("Transformed vector values at mismatched indexes:")
+    print(transformed_vector[mismatches])
+  }
+}
+
+rm(unique_days, df_clean_sorted, clean_vector, contains_multiple_values, mismatches, multi_value_cells, random_patient, transformed_vector)
 ```
