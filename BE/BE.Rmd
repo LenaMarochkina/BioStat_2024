@@ -1,0 +1,59 @@
+---
+title: "Bioequivalence"
+output: html_document
+date: "2024-11-27"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(BE)
+
+```
+
+## Playing with lognormals
+
+```{r lognorm}
+
+Cmax <- rlnorm(10000, meanlog = 2, sdlog = 1)
+
+sd(Cmax)/mean(Cmax)
+
+hist(Cmax, 
+     breaks = c(0:20,max(Cmax)),
+     xlim = c(0,20))
+
+logCmax <- log(Cmax)
+
+sd(logCmax)/mean(logCmax)
+
+
+hist(logCmax)
+
+```
+
+## Process BE data
+
+```{r process}
+
+df <- NCAResult4BE
+
+test_result <- test2x2(df, "AUClast")
+
+print(test_result)
+
+```
+
+## Sample size estimation
+
+```{r process}
+
+CV_1 <- 34 # Прямо из статьи (!!!неправильно!!!)
+
+sscv(CV_1, True.R = 1.05)
+
+CV_2 <- ci2cv(8, 10, 0.96, 1.15) # Пересчетом из ДИ
+
+sscv(CV_2, True.R = 1.05)
+
+```
