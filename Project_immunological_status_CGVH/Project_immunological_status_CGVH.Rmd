@@ -27,7 +27,7 @@ library(pheatmap)
 # Read data and rename columns
 df <- readxl::read_excel("./data/AI_Tcells_DB.xlsx") 
 
-# Check if any duplicates are presented
+# Check duplicates
 duplicates <- df %>%
   group_by(ID, Time_OS, cGVHD_time, Names) %>%
   filter(n() > 1) %>%
@@ -63,7 +63,7 @@ unify_cell_name <- function(cell_name, replacements) {
   for (replacement in replacements) {
     old_value <- replacement[1]
     new_value <- replacement[2]
-    # Escape regex special characters in old_value
+    
     old_value <- str_replace_all(old_value, "([\\+\\*\\?\\|\\(\\)\\[\\]\\{\\}\\^\\$\\.])", "\\\\\\1")
     cell_name_unified <- str_replace_all(cell_name_unified, old_value, new_value)
   }
@@ -113,7 +113,7 @@ rm(duplicates, replacements, unify_cell_name)
 
 ```{r rearrange data}
 
-# Check the number of unique days when analysis were performed
+# Check the number of unique days
 unique_days <- unique(df_clean$Blood_test_day)
 print(unique_days)
 
@@ -135,8 +135,6 @@ multi_value_cells <- apply(df_transformed, 2, function(column) {
 contains_multiple_values <- ifelse(any(multi_value_cells), "Yes", "No")
 print(contains_multiple_values)
 
-
-# Set a seed for reproducibility
 set.seed(123)
 
 # Select a random patient
@@ -184,12 +182,11 @@ rearrange_columns <- function(data) {
   fixed_columns <- c("Subject_ID", "Observation_Days_Count", "cGVHD_Diagnosis_Day", "cGVHD_flag")
   other_columns <- setdiff(colnames(data), fixed_columns)
   
-  # Rearrange the remaining columns based on the desired order of suffixes
   ordered_columns <- unlist(lapply(desired_order, function(suffix) {
     grep(paste0(suffix, "$"), other_columns, value = TRUE)
   }))
   
-  # Combine fixed columns and ordered columns
+  # Combine fixed columns
   final_order <- c(fixed_columns, ordered_columns)
   
   data <- data[, final_order, drop = FALSE]
@@ -197,7 +194,7 @@ rearrange_columns <- function(data) {
   return(data)
 }
 
-# Apply the function to df_transformed
+# Apply the function
 df_transformed <- rearrange_columns(df_transformed)
 
 rm(unique_days, df_clean_sorted, clean_vector, contains_multiple_values, mismatches, multi_value_cells, random_patient, transformed_vector)
@@ -211,7 +208,6 @@ rm(unique_days, df_clean_sorted, clean_vector, contains_multiple_values, mismatc
 # 2. Descriptive Statistics
 
 ``` {r descriptive statistics}
-
 # Prepare df_transformed
 df_transformed <- df_transformed %>%
   mutate(
@@ -219,7 +215,6 @@ df_transformed <- df_transformed %>%
     cGVHD_flag = as.factor(cGVHD_flag)
   )
 
-# List of descriptive statistics
 # List of descriptive statistics
 statistics <- list(
   `Number of values` = ~as.character(sum(!is.na(.x))),
@@ -284,13 +279,13 @@ Survival Analysis are planned.
 *Perform PCA to reduce 167 variables into fewer components that explain the maximum variance!*
 
 ``` {r define dataset Prediction of cGVHD outcome}
-# Define the exact suffixes of interest
+
 desired_suffixes <- c("_30", "_60", "_90", "_180", "_365", "_cGVHD")
 
-# Regex pattern to include columns ending with desired suffixes
+# include columns ending with suffixes
 include_pattern <- paste0("(", paste0(desired_suffixes, collapse = "|"), ")$")
 
-# Regex pattern to exclude columns like _90cGVHD, _60cGVHD, etc.
+# exclude columns like _90cGVHD, _60cGVHD, etc.
 exclude_pattern <- "_[0-9]+_cGVHD$"
 
 # Select columns that match the include pattern and do not match the exclude pattern
@@ -331,7 +326,7 @@ ggplot(reduction_data, aes(x = Step, y = Variables, fill = Step)) +
 ```{r check for missing data}
 
 remove_cols_with_na <- function(data, threshold = 20, always_keep = c("Subject_ID", "Observation_Days_Count", "cGVHD_Diagnosis_Day", "cGVHD_flag")) {
-  # Calculate the percentage of missing values
+  # Calculate missing values
   na_percent <- colMeans(is.na(data)) * 100
 
   cols_to_keep <- names(na_percent)[na_percent <= threshold]
@@ -339,13 +334,13 @@ remove_cols_with_na <- function(data, threshold = 20, always_keep = c("Subject_I
 
   cols_to_keep <- intersect(cols_to_keep, names(data))
   
-  # Subset the data to keep only the desired columns
+  # keep only the desired columns
   cleaned_data <- data[, cols_to_keep, drop = FALSE]
   
   return(cleaned_data)
 }
 
-# Apply the function to your dataset
+# Apply the function
 df_cGVHD_prediction_clean <- remove_cols_with_na(
   data = df_cGVHD_prediction
 )
@@ -382,7 +377,7 @@ ggplot(reduction_data, aes(x = Step, y = Variables, fill = Step)) +
 
 ```{r visualisation}
 
-# Select relevant numeric columns for correlation
+# Select relevant numeric columns 
 correlation_data <- df_cGVHD_prediction_clean %>%
   select(where(is.numeric), cGVHD_Diagnosis_Day, Observation_Days_Count) %>%
   drop_na()  # Drop rows with NA values to compute correlations
@@ -413,7 +408,8 @@ Comparison on the day of the onset of chronic GVHD with the closest points in te
 - For Group 1, will be used data from the day of cGVHD onset (cGVHD_Diagnosis_Day).
 - For Group 2, the closest time point to the median diagnosis day of Group 1 (Median_Diagnosis_Day) is 180 days.
 
-Due to large ammount of immune cell markers (168):
+Due to large ammount of immune cell markers (332):
+
 1. Cluster immune cell markers to identify groups of similar variables.
 2. After clustering, perform statistical comparisons for clasters.
 
@@ -432,7 +428,7 @@ df_transformed %>%
     y = "Density"
   )
 
-# Identify and remove outliers using the three-sigma rule
+# remove outliers using the three-sigma rule
 filtered_diagnosis_day <- df_transformed %>%
   filter(cGVHD_flag == 1) %>%
   select(Subject_ID, cGVHD_Diagnosis_Day)
@@ -475,8 +471,8 @@ df_diagnostic <- df_diagnostic %>%
 
 ``` {r Check for Missing Data diagnostic}
 # Apply the function to your dataset
-df_diagnostic <- remove_cols_with_na(
-  data = df_cGVHD_prediction
+df_diagnostic_clean <- remove_cols_with_na(
+  data = df_diagnostic
 )
 
 ```
@@ -486,3 +482,5 @@ df_diagnostic <- remove_cols_with_na(
 1. Columns with more than *20%* missing values were removed to ensure data quality (from 336 to 168 variables).
 
 # 5. Immunological Profiles of Patients with or without cGVHD
+
+
