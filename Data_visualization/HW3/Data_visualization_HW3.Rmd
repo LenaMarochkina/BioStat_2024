@@ -34,8 +34,12 @@ library(gridExtra)
 ``` {r read and glimpse}
 df_init <- readRDS("very_low_birthweight.RDS") %>%
   mutate(ID = as.factor(row_number()),
-    across(c(ID, apg1, twn, vent, pneumo, pda, cld, dead), ~ as.factor(.x))
-  )
+        across(where(is.integer), as.numeric),
+        across(where(is.character), as.factor),
+        # Transform some numeric vars to factor (binary variables)
+        # Rank variables stay in numeric format: apg1
+        across(c(ID, twn, vent, pneumo, pda, cld, dead, magsulf, meth, toc, ), ~ as.factor(.x)))
+
 
 skimr::skim(df_init)
 ```
@@ -55,7 +59,7 @@ df <- df_init %>%
 
 # Task 2
 
-Plot density function plots for numeric variables. Remove outliers if any. Transform categorical variables into factors (did it when red the data). For any two numeric variables, color the plot by the variable ‘inout’.
+Plot density function plots for numeric variables. Remove outliers if any. Transform categorical variables into factors. For any two numeric variables, color the plot by the variable ‘inout’.
 
 ``` {r density functions}
 # Define remove_outliers function
@@ -68,12 +72,9 @@ remove_outliers <- function(x) {
 
 # Apply function
 numeric_vars <- sapply(df, is.numeric)
+
 df <- df %>%
   mutate(across(where(is.numeric), remove_outliers)) %>% drop_na()
-
-# Transform categorical variables into factors
-df <- df %>%
-  mutate(across(where(is.character), as.factor))
   
 # Plot density functions for numeric variables
 numeric_cols <- names(df)[numeric_vars]
@@ -97,6 +98,13 @@ ggplot(df, aes_string(x = "lowph", fill = "inout")) +
     labs(title ="Density plot of lowPH", x = "lowPH", y = "Density") +
     scale_fill_manual(values = brewer.pal(n = 4, name = "Set3")) +
     theme_minimal()
+
+```
+
+Somenow hospstay variable has negative number of day. I decided to filter that.
+
+``` {r filter negative hos}
+df <- df %>% filter(hospstay >= 0)
 
 ```
 
@@ -132,9 +140,8 @@ Make a new dataframe in which you leave only continuous or rank data, except for
 df_new <- df %>%
   select(where(is.numeric)) %>%
   select(-birth, -year, -exit)
-
-# Perform correlation analysis
-correlation_matrix <- cor(df_new, use = "complete.obs")
+  
+correlation_matrix <- cor(df_new, method = "spearman")
 
 # heatmap of the correlation matrix
 ggcorrplot(correlation_matrix, 
@@ -150,7 +157,6 @@ ggcorrplot(correlation_matrix,
 
 # Define the custom lower panel function
 suppressWarnings({
-  # Define the custom lower panel function
   lower <- function(data, mapping, method = "lm", ...) {
     ggplot(data = data, mapping = mapping) +
       geom_smooth(method = method, color = "darkgreen", se = FALSE, ...)
@@ -181,13 +187,11 @@ df_scaled <- scale(df_new)
 # Compute the distance matrix
 df_cluster <- dist(df_scaled, method = "euclidean")
 
-# Perform hierarchical clustering with the "complete" method
+# Perform hierarchical clustering 
 res.hc <- hclust(df_cluster, method = "ward.D2")
 
 # Plot the dendrogram
 plot(res.hc, cex = 0.5, hang = -1, main = "Cluster Dendrogram")
-
-# Cut the tree into 4 groups and highlight them
 rect.hclust(res.hc, k = 4, border = 2:5)
 ```
 
@@ -196,7 +200,6 @@ rect.hclust(res.hc, k = 4, border = 2:5)
 Make a simultaneous plot of heatmap and hierarchical clustering. Interpret the result.
 
 ``` {r heatmap + hierarchical clustering}
-# Standardize the data
 df_scaled <- scale(df_new)
 
 # Create a heatmap with hierarchical clustering
@@ -221,8 +224,6 @@ Perform PCA analysis on this data. Interpret the result. Should this data be sca
 Create a biplot for PCA. Color it by the value of the 'dead' column.
 
 ``` {r PSA}
-
-# Scale the data
 df_scaled <- scale(df_new)
 
 # Perform PCA
@@ -231,13 +232,13 @@ pca_result <- prcomp(df_scaled, center = TRUE, scale. = TRUE)
 # PCA Summary
 summary(pca_result)
 
-# Visualize explained variance
+# Visualize variance
 fviz_eig(pca_result, addlabels = TRUE, ylim = c(0, 50))
 
 pca_data <- as.data.frame(pca_result$x)
 pca_data$dead <- df$dead
 
-# PCA Biplot with coloring by 'dead' column
+# PCA Biplot with coloring by dead column
 fviz_pca_biplot(
   pca_result,
   geom.ind = "point", 
@@ -250,26 +251,26 @@ fviz_pca_biplot(
   labs(title = "PCA Biplot Colored by 'Dead'", x = "PC1", y = "PC2")
 ```
 
-PC1 explains 47.3% of the variance, the largest contribution among all components.
-PC2 explains 20.3%.
-Together, the first 2 components explain about 57.6% of the variance.
+PC1 explains 43.2% of the variance, the largest contribution among all components.
+PC2 explains 18.1%.
+Together, the first 3 components explain about 73.7% of the variance.
 
 - bwt and gest point toward the negative side of PC1, suggesting that higher values of these variables contribute negatively to PC1.
 - hospstay points positively along PC1, indicating that longer hospital stays contribute positively to PC1.
-- pltct and lowph contribute to variance in PC2.
-- longer arrows like hospstay and bwt indicate stronger influence.
+- pltct, lowph and apg1 contribute to variance in PC2.
+- longer arrows like gest and bwt indicate stronger influence.
 
 # Task 9 
 Change the last graph to 'plotly'. When you hover over a point, you want the patient id to be displayed.
 
 ```{r task 9}
 
-# Prepare PCA data with patient_id
+# PCA data with patient_id
 pca_data <- as.data.frame(pca_result$x)
 pca_data$dead <- df$dead
 pca_data$patient_id <- df$ID
 
-# Interactive PCA biplot with plotly
+# PCA biplot with plotly
 p <- plot_ly(
   data = pca_data,
   x = ~PC1,
@@ -307,26 +308,17 @@ PCA does not consider the target variable (dead) during its computation. It iden
 Convert your data to two-column dimensions via UMAP. Compare the point mapping results between PCA and UMAP algorithms.
 
 ```{r UMAP}
-
 # Perform UMAP 
 umap_config <- umap.defaults
-umap_config$n_neighbors <- 15  # the number of neighbors
-umap_config$min_dist <- 0.2   # the minimum distance
+umap_config$n_neighbors <- 25  # the number of neighbors
+umap_config$min_dist <- 0.005   # the minimum distance
 umap_result <- umap(df_scaled, config = umap_config)
 
-# Extract UMAP embeddings
 umap_data <- as.data.frame(umap_result$layout)
 colnames(umap_data) <- c("UMAP1", "UMAP2")
 
-# Add the 'dead' column and patient_id if necessary
+# Add the dead column
 umap_data$dead <- df$dead
-
-# Combine PCA and UMAP plots
-pca_plot <- ggplot(pca_data, aes(x = PC1, y = PC2, color = as.factor(dead))) +
-  geom_point(alpha = 0.7) +
-  scale_color_manual(values = c("darkgreen", "gold"), name = "Dead") +
-  labs(title = "PCA: Point Mapping", x = "PC1", y = "PC2") +
-  theme_minimal()
 
 umap_plot <- ggplot(umap_data, aes(x = UMAP1, y = UMAP2, color = as.factor(dead))) +
   geom_point(alpha = 0.7) +
@@ -334,8 +326,7 @@ umap_plot <- ggplot(umap_data, aes(x = UMAP1, y = UMAP2, color = as.factor(dead)
   labs(title = "UMAP: Point Mapping", x = "UMAP1", y = "UMAP2") +
   theme_minimal()
 
-# Display the plots side by side
-grid.arrange(pca_plot, umap_plot, ncol = 2)
+umap_plot
 
 ```
 
@@ -343,25 +334,16 @@ grid.arrange(pca_plot, umap_plot, ncol = 2)
 
 ```{r UMAP adjusted}
 
-# Perform UMAP dimensionality reduction
 umap_config <- umap.defaults
-umap_config$n_neighbors <- 20  # the number of neighbors
+umap_config$n_neighbors <- 5  # the number of neighbors
 umap_config$min_dist <- 0.5   # the minimum distance
 umap_result <- umap(df_scaled, config = umap_config)
 
-# Extract UMAP embeddings
 umap_data <- as.data.frame(umap_result$layout)
 colnames(umap_data) <- c("UMAP1", "UMAP2")
 
-# Add the 'dead' column and patient_id if necessary
+# Add the dead column 
 umap_data$dead <- df$dead
-
-# Combine PCA and UMAP plots
-pca_plot <- ggplot(pca_data, aes(x = PC1, y = PC2, color = as.factor(dead))) +
-  geom_point(alpha = 0.7) +
-  scale_color_manual(values = c("darkgreen", "gold"), name = "Dead") +
-  labs(title = "PCA: Point Mapping", x = "PC1", y = "PC2") +
-  theme_minimal()
 
 umap_plot <- ggplot(umap_data, aes(x = UMAP1, y = UMAP2, color = as.factor(dead))) +
   geom_point(alpha = 0.7) +
@@ -369,9 +351,7 @@ umap_plot <- ggplot(umap_data, aes(x = UMAP1, y = UMAP2, color = as.factor(dead)
   labs(title = "UMAP: Point Mapping", x = "UMAP1", y = "UMAP2") +
   theme_minimal()
 
-# Display the plots side by side
-
-grid.arrange(pca_plot, umap_plot, ncol = 2)
+umap_plot
 
 ```
 
@@ -396,25 +376,25 @@ permute_column <- function(data, column, percentage) {
 df_original <- df_new
 df_original_scaled <- scale(df_new)
 
-# Permute 50% and 100% of 'bwt'
+# Permute 50% and 100% of bwt
 df_50_perm <- permute_column(df_original, "bwt", 0.5)
 df_100_perm <- permute_column(df_original, "bwt", 1.0)
 
-# Scale Permuted Data
+# Scale data
 df_50_perm_scaled <- scale(df_50_perm[, !(names(df_50_perm) %in% c("ID"))])
 df_100_perm_scaled <- scale(df_100_perm[, !(names(df_100_perm) %in% c("ID"))])
 
-# Perform PCA on Original and Permuted Data
+# Perform PCA
 pca_original <- prcomp(df_original_scaled, center = TRUE, scale. = TRUE)
 pca_50_perm <- prcomp(df_50_perm_scaled, center = TRUE, scale. = TRUE)
 pca_100_perm <- prcomp(df_100_perm_scaled, center = TRUE, scale. = TRUE)
 
-# Perform UMAP on Original and Permuted Data
+# Perform UMAP
 umap_original <- umap(df_original_scaled)
 umap_50_perm <- umap(df_50_perm_scaled)
 umap_100_perm <- umap(df_100_perm_scaled)
 
-# Visualize PCA Explained Variance
+# Visualize PCA Variance
 explained_variance <- data.frame(
   Components = seq_along(pca_original$sdev),
   Original = (pca_original$sdev^2) / sum(pca_original$sdev^2),
@@ -431,25 +411,25 @@ ggplot(explained_variance, aes(x = Components)) +
   theme_minimal() +
   scale_color_manual(values = c("blue", "orange", "red"))
 
-# PCA Biplot for Original Data
+# PCA Biplot for original data
 pca_original_biplot <- ggplot(as.data.frame(pca_original$x), aes(x = PC1, y = PC2)) +
-  geom_point(alpha = 0.7, aes(color = df_cleaned$dead)) +
+  geom_point(alpha = 0.7, aes(color = df$dead)) +
   labs(title = "PCA Biplot - Original Data") +
   theme_minimal()
 
-# PCA Biplot for 50% Permuted Data
+# PCA Biplot for 50% permuted data
 pca_50_biplot <- ggplot(as.data.frame(pca_50_perm$x), aes(x = PC1, y = PC2)) +
   geom_point(alpha = 0.7, aes(color = df$dead)) +
   labs(title = "PCA Biplot - 50% Permuted Data") +
   theme_minimal()
 
-# PCA Biplot for 100% Permuted Data
+# PCA Biplot for 100% permuted data
 pca_100_biplot <- ggplot(as.data.frame(pca_100_perm$x), aes(x = PC1, y = PC2)) +
   geom_point(alpha = 0.7, aes(color = df$dead)) +
   labs(title = "PCA Biplot - 100% Permuted Data") +
   theme_minimal()
 
-# UMAP Visualization for Original and Permuted Data
+# UMAP for original and permuted Data
 umap_original_df <- as.data.frame(umap_original$layout)
 umap_50_df <- as.data.frame(umap_50_perm$layout)
 umap_100_df <- as.data.frame(umap_100_perm$layout)
@@ -485,7 +465,7 @@ The flatter curve for the 100% permuted dataset shows that the principal compone
 
 Let's do a sensitivity analysis. Run the analysis as in steps 4-6 on the original with all rows with empty values removed (i.e. including columns with more than 100 missing values), and then on the original dataframe with empty values imputed by the mean or median. How do the results differ? What are the advantages and disadvantages of each approach?
 
-```{r}
+```{r imputation}
 df_median_imputed <- df_init %>%
   mutate_if(is.numeric, list(~ replace(., is.na(.), median(., na.rm = TRUE))))
 
@@ -496,15 +476,15 @@ df_median_imputed <- df_init %>%
 
 Make a new dataframe in which you leave only continuous or rank data, except for 'birth', 'year' and 'exit'. Perform a correlation analysis of this data. Plot any two types of graphs to visualize the correlations.
 
-``` {r numeric data correlation}
+``` {r numeric data correlation 2}
 df_new_2 <- df_median_imputed %>%
   select(where(is.numeric)) %>%
   select(-birth, -year, -exit)
 
 # Perform correlation analysis
-correlation_matrix <- cor(df_new_2, use = "complete.obs")
+correlation_matrix <- cor(df_new_2, method = "spearman")
 
-# heatmap of the correlation matrix
+# heatmap 
 ggcorrplot(correlation_matrix, 
            method = "circle", 
            type = "lower", 
@@ -538,24 +518,24 @@ suppressWarnings({
 print(p)
 ```
 
+One variable was added to the analysis (lol).
+
+
 ### Task 5 
 
 Build a hierarchical clustering on this dataframe.
 
-``` {r hierarchical clustering}
+``` {r hierarchical clustering 2}
 # Scale the data
 df_scaled <- scale(df_new_2)
 
-# Compute the distance matrix
+# distance matrix
 df_cluster <- dist(df_scaled, method = "euclidean")
 
-# Perform hierarchical clustering with the "ward.D2" method
+# Perform hierarchical clustering
 res.hc <- hclust(df_cluster, method = "ward.D2")
 
-# Plot the dendrogram
 plot(res.hc, cex = 0.5, hang = -1, main = "Cluster Dendrogram")
-
-# Cut the tree into 4 groups and highlight them
 rect.hclust(res.hc, k = 4, border = 2:5)
 ```
 
@@ -563,7 +543,7 @@ rect.hclust(res.hc, k = 4, border = 2:5)
 
 Make a simultaneous plot of heatmap and hierarchical clustering. Interpret the result.
 
-``` {r heatmap + hierarchical clustering}
+``` {r heatmap + hierarchical clustering 2}
 # Standardize the data
 df_scaled <- scale(df_new_2)
 
@@ -581,13 +561,13 @@ pheatmap(
 )
 ```
 
-When imputing missing values, more columns are retained in the analysis.
+When imputing missing values, more columns are retained in the analysis (+ lol).
 
-Complete case analysis ensures clarity and simplicity but risks data loss, while imputation preserves the dataset but may compromise the integrity of relationships in the data.
+Imputation using the median has suppressed natural variability in the data, and scaling has amplified this issue, leading to clustering results that are less interpretable and visually uniform.
 
 # Task 15
 
-``` {r PSA}
+``` {r PSA 2}
 
 # Scale the data
 df_scaled <- scale(df_new_2)
@@ -604,7 +584,7 @@ fviz_eig(pca_result, addlabels = TRUE, ylim = c(0, 50))
 pca_data <- as.data.frame(pca_result$x)
 pca_data$dead <- df_init$dead
 
-# PCA Biplot with coloring by 'dead' column
+# PCA Biplot with coloring by dead column
 fviz_pca_biplot(
   pca_result,
   geom.ind = "point", 
@@ -617,28 +597,26 @@ fviz_pca_biplot(
   labs(title = "PCA Biplot Colored by 'Dead'", x = "PC1", y = "PC2")
 ```
 
+Previously, 1 PSA component explained 43.2% of variations, now 33.8%.
 
-```{r UMAP}
+By filling in missing values, the variance across variables can shift, causing PCA to reorient the components.
+
+Imputation added more data, filling gaps and altering the data’s variance structure. This changed how PCA oriented the components, flipping some vars while maintaining the same relative relationships between variables and observations.
+
+
+```{r UMAP 2}
 
 # Perform UMAP 
 umap_config <- umap.defaults
-umap_config$n_neighbors <- 15  # the number of neighbors
-umap_config$min_dist <- 0.2   # the minimum distance
+umap_config$n_neighbors <- 25  # the number of neighbors
+umap_config$min_dist <- 0.01   # the minimum distance
 umap_result <- umap(df_scaled, config = umap_config)
 
-# Extract UMAP embeddings
 umap_data <- as.data.frame(umap_result$layout)
 colnames(umap_data) <- c("UMAP1", "UMAP2")
 
-# Add the 'dead' column and patient_id if necessary
+# Add the dead column
 umap_data$dead <- df_init$dead
-
-# Combine PCA and UMAP plots
-pca_plot <- ggplot(pca_data, aes(x = PC1, y = PC2, color = as.factor(dead))) +
-  geom_point(alpha = 0.7) +
-  scale_color_manual(values = c("darkgreen", "gold"), name = "Dead") +
-  labs(title = "PCA: Point Mapping", x = "PC1", y = "PC2") +
-  theme_minimal()
 
 umap_plot <- ggplot(umap_data, aes(x = UMAP1, y = UMAP2, color = as.factor(dead))) +
   geom_point(alpha = 0.7) +
@@ -646,9 +624,9 @@ umap_plot <- ggplot(umap_data, aes(x = UMAP1, y = UMAP2, color = as.factor(dead)
   labs(title = "UMAP: Point Mapping", x = "UMAP1", y = "UMAP2") +
   theme_minimal()
 
-# Display the plots side by side
-grid.arrange(pca_plot, umap_plot, ncol = 2)
+umap_plot
 
 ```
 
-Additional clusters were identified with UMAP (4 instead of 2).
+Clasters became more clearer.
+
