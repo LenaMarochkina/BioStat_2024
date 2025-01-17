@@ -1,0 +1,516 @@
+---
+title: "Data_visualization_HW_1"
+author: "Elena Marochkina"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 1
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(openxlsx)
+library(tidyverse)
+library(flextable)
+library(officer)
+library(corrplot)
+library(fastDummies)
+library(gt)
+library(MASS)
+```
+
+# 1. Read and prepare data
+
+```{r read data}
+df <- read.xlsx("HW_data.xlsx", sheet = 1)
+
+df <- df %>%
+  mutate(across(c(SEQN, RIAGENDR, RIDRETH3, 
+                  DMDEDUC2, DMDMARTL, DRQSDIET, DRQSDT1, DRQSDT2, DRQSDT3, DRQSDT4, DRQSDT7,
+                  DRQSDT8, DRQSDT9, DRQSDT10, DRQSDT91, DRD340, DRD360, 
+                  
+                  ALQ101, ALQ120U, SMQ020, SMQ040, PAQ605,
+                  PAQ620, PAQ635, PAQ650, PAQ665, MCQ010, MCQ035, MCQ160C, MCQ160B, MCQ160E, MCQ160F, MCQ160M,
+                  MCQ160O, MCQ220, BPQ020, BPQ050A, DIQ010, DIQ070), as.factor))
+
+df %>% skimr::skim()
+
+```
+
+# 2. Physical activity definition
+
+To create a variable for each type of activity, we need to calculate the total minutes per week for each activity type by multiplying the number of days per week by the minutes per day, then summing for the specified intensity levels.
+
+Variables to Calculate Vigorous Activity Total Minutes/Week:
+
+*Vigorous Total = (PAQ610 × PAD615) + (PAQ655 × PAD660)*
+
+Moderate Activity Total Minutes/Week:
+
+*Moderate Total=(PAQ625×PAD630)+(PAQ670×PAD675)*
+
+Transportation Total Minutes/Week:
+
+*Transportation Total=PAQ640×PAD645*
+
+Different activity intensities have different metabolic impacts.
+
+Vigorous activity burns more energy and has a higher intensity than moderate activity. To accurately summarize total physical activity, each intensity level should be scaled according to its MET value.
+
+The MET values recommended by the Global Physical Activity Questionnaire (GPAQ) and World Health Organization (WHO) are:
+
+Vigorous Activity: 8 METs Moderate Activity: 4 METs Transportation (Walking/Bicycling): 4 METs
+
+<https://www.who.int/docs/default-source/ncds/ncd-surveillance/gpaq-analysis-guide.pdf>
+
+# 3. Covariates for Exploratory analysis
+
+Based on clinical meaning the following covariates were choosen for further analysis:
+
+| **Covariate**       | **Explanation**                                                                                | **Variable** |
+|---------------------|------------------------------------------------------------------------------------------------|--------------|
+| **Age**             | Participant's age in years, a critical factor influencing glycated hemoglobin (HbA1c) levels.  | `RIDAGEYR`   |
+| **Sex**             | Biological sex of the participant (male or female).                                            | `RIAGENDR`   |
+| **Race**            | Ethnic background to account for genetic and cultural differences in HbA1c levels.             | `RIDRETH3`   |
+| **Education Level** | Highest level of education completed, reflecting socioeconomic status and health literacy.     | `DMDEDUC2`   |
+| **Annual Income**   | Family income as a measure of socioeconomic status affecting lifestyle and healthcare access.  | `INDFMIN2`   |
+| **Sedentary Time**  | Total time spent in sedentary activities, a known risk factor for poor metabolic outcomes.     | `PAD680`     |
+| **Smoking Status**  | Smoking habits (e.g., current smoker, former smoker) as smoking influences metabolic health.   | `SMQ040`     |
+| **Alcohol Intake**  | Number of alcoholic drinks consumed per day, affecting glucose metabolism and HbA1c.           | `ALQ130`     |
+| **Diabetes Status** | History of diabetes diagnosis to control for pre-existing conditions directly affecting HbA1c. | `DIQ010`     |
+| **Hypertension**    | History of high blood pressure diagnosis, which often coexists with metabolic disorders.       | `BPQ020`     |
+
+```{r Rename columns with choosen covariates}
+# Rename columns with chosen covariates
+df_clean <- df %>%
+  mutate(
+    # Calculate total minutes per week for each activity type
+    Vigorous_Total_MET = ((PAQ610 * PAD615) + (PAQ655 * PAD660)) * 8,
+    Moderate_Total_MET = ((PAQ625 * PAD630) + (PAQ670 * PAD675)) * 4,
+    Transportation_Total_MET = PAQ640 * PAD645 * 4,
+    
+    # Calculate total MET-minutes per week
+    Total_MET_Minutes = Vigorous_Total_MET + Moderate_Total_MET + Transportation_Total_MET,
+  
+  Race = case_when(
+      RIDRETH3 %in% c(1, 2) ~ "Hispanic",
+      RIDRETH3 == 3 ~ "White",
+      RIDRETH3 == 4 ~ "Black",
+      RIDRETH3 == 6 ~ "Asian",
+      RIDRETH3 == 7 ~ "Other",
+      TRUE ~ NA_character_
+      ), 
+    
+    # Recoding Education
+    Education = case_when(
+      DMDEDUC2 %in% c(1, 2, 3) ~ "High_School",
+      DMDEDUC2 == 4 ~ "Some_College",
+      DMDEDUC2 == 5 ~ "College_Graduate",
+      TRUE ~ NA_character_ 
+    ),
+    
+    # Recoding Income
+    Income = case_when(
+      INDFMIN2 %in% 1:4 ~ "Low_Income",
+      INDFMIN2 %in% 5:8 ~ "Middle_Income",
+      INDFMIN2 %in% 9:12 ~ "High_Income",
+      TRUE ~ NA_character_  
+    ),
+  
+    # Recoding Smoking Status
+    Smoking_Status = case_when(
+      SMQ040 == 3 ~ 0,   # Not currently smoking
+      SMQ040 %in% c(1, 2) ~ 1,  # Currently smoking (daily or occasionally)
+      TRUE ~ NA_real_ 
+    )
+    
+  ) %>%
+  rename(
+    # Rename Subject ID
+    Subject_ID = SEQN,
+    
+    # Rename demographic variables
+    Age = RIDAGEYR,
+    Gender = RIAGENDR,
+    
+    # Rename lifestyle variables
+    Alcohol_Intake = DR1TALCO,
+    Sedentary_Minutes = PAD680,
+    
+    # Rename examination variables
+    HbA1c = LBXGH,
+    
+    # Rename health variables
+    Diabetes = DIQ010,
+    Hypertension = BPQ020,
+
+  )  %>%
+  mutate(
+      across(
+      c(Gender, Diabetes, Hypertension),
+      ~ as.factor(if_else(as.numeric(as.character(.)) == 2, 0, as.numeric(as.character(.))))
+    )
+  ) %>%
+  select(
+    Subject_ID, Total_MET_Minutes, Age, Gender, Race, Education, Income, Smoking_Status,
+    Alcohol_Intake, Sedentary_Minutes, HbA1c,
+    Diabetes, Hypertension
+  )
+
+
+# Transform all categorical variables with more than 2 categories into dummy variables
+df_clean <- dummy_cols(df_clean, 
+                       select_columns = c("Race", "Education", "Income"),
+                       remove_first_dummy = TRUE,
+                       remove_selected_columns = TRUE)
+
+```
+
+Assess the covariate roles based on the DAG:
+
+| **Covariate**           | **Role**               |
+|-------------------------|------------------------|
+| **Age**                 | Confounder             |
+| **Sex**                 | Confounder             |
+| **Race**                | Confounder             |
+| **Comorbidities**       | Confounder             |
+| **Blood Pressure**      | Collider               |
+| **Diabetic Medication** | Collider               |
+| **Education**           | Confounder             |
+| **BMI**                 | Mediator               |
+| **Marital Status**      | Predecessor (Exposure) |
+| **Family Income**       | Confounder             |
+| **Smoking**             | Confounder             |
+
+# 3. Exploratary Analysis
+
+## 3.1. Desciptive Statictics
+
+```{r descriptive statistics}
+
+# List of descriptive statistics
+statistics <- list(
+  `_Number of values` = ~as.character(sum(!is.na(.x))),
+  `_No data` = ~as.character(sum(is.na(.x))),
+  `_Mean` = ~ifelse(sum(!is.na(.x)) == 0, "NA", as.character(mean(.x, na.rm = TRUE) %>% round(2))),
+  `_Median` = ~ifelse(sum(!is.na(.x)) == 0, "NA", as.character(median(.x, na.rm = TRUE) %>% round(2))),
+  `_SD` = ~ifelse(sum(!is.na(.x)) < 3, "NA", as.character(sd(.x, na.rm = TRUE) %>% round(2))),
+  `_Q1 - Q3` = ~ifelse(sum(!is.na(.x)) == 0, "NA", paste0(as.character(quantile(.x, 0.25, na.rm = TRUE) %>% round(2)), " - ", as.character(quantile(.x, 0.75, na.rm = TRUE) %>% round(2)))),
+  `_IQR` = ~ifelse(sum(!is.na(.x)) == 0, "NA", as.character(IQR(.x, na.rm = TRUE) %>% round(2))),
+  `_min` = ~ifelse(sum(!is.na(.x)) == 0, "NA", as.character(min(.x, na.rm = TRUE) %>% round(2))),
+  `_max` = ~ifelse(sum(!is.na(.x)) == 0, "NA", as.character(max(.x, na.rm = TRUE) %>% round(2)))
+)
+
+# Summarize the statistics for each numeric variable
+df_clean %>%
+  select(where(is.numeric)) %>% 
+  summarise(across(everything(), statistics)) %>%
+  pivot_longer(cols = everything(), names_sep = "__", names_to = c("Variable", "Stat")) %>%
+  rename(`Value` = value) %>%
+  flextable() %>%
+  merge_v("Variable") %>%
+  width(j = c("Variable", "Stat", "Value"), width = 2) %>%
+  autofit() %>%
+  border_inner(border = fp_border(color = "black", width = 1)) %>%
+  border_outer(border = fp_border(color = "black", width = 1))
+
+# Clean and summarize the categorical data for all factor variables
+df_clean %>%
+  select(-Subject_ID) %>%
+  select(where(is.factor)) %>%
+  pivot_longer(cols = everything(), names_to = "Variable", values_to = "Value") %>%
+  group_by(Variable, Value) %>%
+  summarise(n = n(), .groups = 'drop') %>%
+  group_by(Variable) %>%
+  mutate(`No data` = sum(is.na(Value)),
+         `% by group` = (n / sum(n)) * 100) %>%
+  ungroup() %>%
+  select(Variable, Value, n, `% by group`, `No data`) %>%
+  arrange(Variable, Value) %>%
+  flextable() %>%
+  merge_v("Variable") %>%
+  autofit() %>%
+  border_inner(border = fp_border(color = "black", width = 1)) %>%
+  border_outer(border = fp_border(color = "black", width = 1))
+```
+
+No missing or abnormal data were found.
+
+## 3.2. Correlation Analysis
+
+```{r multicollinearity check}
+# Correlation matrix for continuous variables
+
+continuous_vars <- select(df_clean, Total_MET_Minutes, Age, Alcohol_Intake, Sedentary_Minutes, HbA1c)
+corr_matrix <- cor(continuous_vars, use = "complete.obs")
+corrplot(corr_matrix, method = "circle")
+```
+
+No multicollinearity was found.
+
+## 3.3. Variables distribution
+
+```{r distribution}
+# Total MET-minutes distribution
+ggplot(df_clean, aes(x = Total_MET_Minutes)) + 
+  geom_histogram(binwidth = 200, fill = "pink", color = "white") + 
+  theme_minimal() + 
+  ggtitle("Total MET-Minutes Distribution")
+
+```
+
+Outliers detection is needed.
+
+```{r outliers detection}
+Q1 <- quantile(df_clean$Total_MET_Minutes, 0.25)
+Q3 <- quantile(df_clean$Total_MET_Minutes, 0.75)
+IQR <- Q3 - Q1
+lower_bound <- Q1 - 1.5 * IQR
+upper_bound <- Q3 + 1.5 * IQR
+outliers <- df_clean$Total_MET_Minutes[df_clean$Total_MET_Minutes < lower_bound | 
+                                       df_clean$Total_MET_Minutes > upper_bound]
+# deleet outliiers
+
+df_clean <- df_clean[!(df_clean$Total_MET_Minutes %in% outliers), ]
+
+```
+
+## 3.4. Dependence of HbA1c on Total_MET_Minutes
+
+H0: The correlation between physical activity (Total_MET_Minutes) and glycated hemoglobin (HbA1c) is 0. H1: The correlation between physical activity (Total_MET_Minutes) and glycated hemoglobin (HbA1c) is not 0.
+
+```{r dependence of HbA1c on Total_MET_Minutes}
+
+# Plot the dependence of HbA1c on Total_MET_Minutes
+ggplot(df_clean, aes(x = Total_MET_Minutes, y = HbA1c)) +
+  geom_point(alpha = 0.5, color = "blue") + 
+  geom_smooth(method = "lm", se = TRUE, color = "red") + 
+  theme_minimal() +
+  labs(
+    title = "Dependence of Glycated Hemoglobin (HbA1c) on Total MET-Minutes",
+    x = "Total MET-Minutes",
+    y = "Glycated Hemoglobin (HbA1c)"
+  )
+```
+
+The plot suggests that there may not be a strong direct relationship between total physical activity (as measured by MET-minutes) and HbA1c levels. However, further analysis, including more refined statistical modeling (e.g., adding covariates), may be needed to explore this relationship more thoroughly. It could also be useful to investigate potential non-linear effects or other confounders that might impact the relationship.
+
+# 4. Logistic Regression Model
+
+## 4.1. Logistic Regression Model without covariates
+
+```{r Logistic Regression Model without covariates}
+# Model without covariates
+model_no_covariates <- glm(HbA1c ~ Total_MET_Minutes, data = df_clean, family = "gaussian")
+
+summary(model_no_covariates)
+```
+
+The insignificant and minimal reduction in deviance suggest that Total_MET_Minutes Total_MET_Minutes does not have a meaningful relationship with HbA1c. Further investigation with covariates or transformation of Total_MET_Minutes needed.
+
+## 4.2. Logistic Regression Model with covariates
+
+```{r Logistic Regression Model with covariates}
+# Model with covariates
+model_with_covariates <- glm(HbA1c ~ Total_MET_Minutes + Age + Gender + Smoking_Status + Alcohol_Intake + Sedentary_Minutes + Diabetes + Hypertension + Race_Black + Race_Hispanic + Race_White + Race_Other + Education_Some_College + Income_Low_Income + Income_Middle_Income, 
+                             data = df_clean, family = "gaussian")
+
+# Model results
+summary(model_with_covariates)
+
+# Create a data frame for significant predictors
+significant_predictors <- data.frame(
+  Predictor = c("(Intercept)", "Total_MET_Minutes", "Age", "Diabetes", "Race_White"),
+  `p-value` = c("<0.001", "0.46", "<0.001", "<0.001", "0.014"),
+  Interpretation = c(
+    "The baseline HbA1c when all predictors are at reference levels.",
+    "No significant.",
+    "Each additional year of age increases HbA1c by 0.007, a modest but significant effect.",
+    "Having diabetes increases HbA1c by a substantial 1.49 units.",
+    "Being White is associated with a 0.224 decrease in HbA1c compared to the reference category."
+  )
+)
+
+# Create a table
+significant_predictors %>%
+  gt() %>%
+  tab_header(
+    title = "Significant Predictors from Logistic Regression"
+  )
+```
+
+# 5. Model Diagnostics
+
+## 5.1. Residual Analysis
+
+```{r residual plots}
+# Residual plots for both models
+par(mfrow = c(1, 2))
+plot(model_no_covariates, which = 1:2, main = "Model Without Covariates")
+plot(model_with_covariates, which = 1:2, main = "Model With Covariates")
+
+# Check multicollinearity
+library(car)
+vif(model_with_covariates)
+```
+
+**Model without covariates:** *Residuals vs. Fitted*
+
+The plot shows some clear patterns (curvature and fanning out at higher fitted values). This suggests non-linearity and heteroscedasticity in the model. Outliers are evident (e.g., points labeled 838, 586, 242).
+
+*Q-Q Plot*
+
+The residuals deviate significantly from the theoretical quantiles, especially at the tails, indicating non-normality.
+
+**Model with covariates:** *Residuals vs. Fitted*
+
+The residuals are more tightly distributed compared to the model without covariates, suggesting improved fit due to the inclusion of additional variables. However, there are still signs of heteroscedasticity, as the spread of residuals is not perfectly uniform. The variance appears to vary slightly across fitted values. Outliers (e.g., points labeled 309, 8870, and 181) are still present and may influence the results.
+
+*Q-Q Plot*
+
+The residuals deviate from the diagonal line, particularly at the tails, indicating non-normality.
+
+*Suggested Transformations:* Log Transformation of the HbA1c, removing outliers, Weighted Least Squares (due to heteroscedasticity).
+
+## 5.2. Multicolinearity
+
+```{r multicollinearity}
+# Check multicollinearity
+vif(model_with_covariates)
+
+```
+
+No multicollinearity concerns.
+
+## 5.3. Transformations and Refit Models
+
+### 5.3.1. Log Transformation and Outlier Removal
+
+```{r log transformation}
+df_clean$Log_HbA1c <- log(df_clean$HbA1c)
+
+# Identify and remove outliers
+df_clean <- df_clean[!(rownames(df_clean) %in% c(838, 586, 242)), ]
+
+# Refit models with log-transformed response
+model_no_covariates_after_transformations <- glm(HbA1c ~ Total_MET_Minutes, data = df_clean, family = "gaussian")
+
+model_with_covariates_after_transformations  <- glm(HbA1c ~ Total_MET_Minutes + Age + Gender + Smoking_Status + Alcohol_Intake + Sedentary_Minutes + Diabetes + Hypertension + Race_Black + Race_Hispanic + Race_White + Race_Other + Education_Some_College + Income_Low_Income + Income_Middle_Income, 
+                             data = df_clean, family = "gaussian")
+
+summary(model_no_covariates_after_transformations)
+summary(model_with_covariates_after_transformations)
+
+# Compare AIC values
+AIC(model_no_covariates, model_no_covariates_after_transformations, model_with_covariates, model_with_covariates_after_transformations)
+```
+
+Log transformation of HbA1c improved the fit significantly by reducing heteroscedasticity and normalizing residuals.
+
+### 5.3.2. Weighted Least Squares
+
+```{r weighted least squares}
+
+# Estimate weights inversely proportional to the variance of residuals
+wts_no_covariates <- 1 / fitted(model_no_covariates_after_transformations )^2
+wts_with_covariates <- 1 / fitted(model_with_covariates_after_transformations )^2
+
+# Refit models with log-transformed response
+model_no_covariates_wts <- glm(HbA1c ~ Total_MET_Minutes, data = df_clean, family = "gaussian", weights = wts_no_covariates)
+
+model_with_covariates_wts  <- glm(HbA1c ~ Total_MET_Minutes + Age + Gender + Smoking_Status + Alcohol_Intake + Sedentary_Minutes + Diabetes + Hypertension + Race_Black + Race_Hispanic + Race_White + Race_Other + Education_Some_College + Income_Low_Income + Income_Middle_Income, 
+                             data = df_clean, family = "gaussian", weights = wts_with_covariates)
+
+summary(model_no_covariates_wts)
+summary(model_with_covariates_wts)
+
+# Compare AIC values
+AIC(model_no_covariates, model_no_covariates_after_transformations, model_no_covariates_wts, model_with_covariates, model_with_covariates_after_transformations, model_with_covariates_wts)
+                
+```
+
+Applying WLS for model with and without covariates resulted in the best fit.
+
+# 6. Results Presentation and Interpretation
+
+```{r results}
+# Extract point estimate and confidence interval for model without covariates
+point_estimate_no_cov <- coef(model_no_covariates_wts)["Total_MET_Minutes"]
+ci_no_cov <- confint(model_no_covariates_wts)["Total_MET_Minutes", ]
+
+# Extract point estimate and confidence interval for model with covariates
+point_estimate_with_cov <- coef(model_with_covariates_wts)["Total_MET_Minutes"]
+ci_with_cov <- confint(model_with_covariates_wts)["Total_MET_Minutes", ]
+
+# Create a summary table
+results <- data.frame(
+  Model = c("Without Covariates", "With Covariates"),
+  `Point Estimate (β)` = c(
+    sprintf("%.3e", point_estimate_no_cov),
+    sprintf("%.3e", point_estimate_with_cov)
+  ),
+  `95% Confidence Interval` = c(
+    sprintf("[%.3e, %.3e]", ci_no_cov[1], ci_no_cov[2]),
+    sprintf("[%.3e, %.3e]", ci_with_cov[1], ci_with_cov[2])
+  ),
+  Interpretation = c(
+    "Effect not significant, small effect size.",
+    "Effect not significant, small effect size."
+  )
+)
+
+# Rename columns to simpler names
+colnames(results) <- c("Model", "PointEstimate", "ConfidenceInterval", "Interpretation")
+
+# Generate a polished table using gt
+results %>%
+  gt() %>%
+  tab_header(
+    title = "Point and Interval Estimates of the Effect of Physical Activity on HbA1c"
+  ) %>%
+  cols_label(
+    Model = "Model",
+    PointEstimate = "Point Estimate (β)",
+    ConfidenceInterval = "95% Confidence Interval",
+    Interpretation = "Interpretation"
+  )
+
+```
+
+The point estimate provides the best guess of the effect of physical activity (Total_MET_Minutes) on glycated hemoglobin (HbA1c). Both estimates are extremely small in magnitude, suggesting that physical activity has a negligible effect on HbA1c levels.
+
+The 95% confidence interval provides a range of plausible values for the effect of physical activity on HbA1c. Both intervals include zero, meaning the effect is not statistically significant. There is uncertainty in the direction of the effect (negative in the model without covariates, slightly positive in the model with covariates).
+
+No, the effect cannot be considered clinically significant because:
+
+1.  The estimated changes in HbA1c are extremely small, even for large changes in physical activity.
+
+2.  The confidence intervals indicate that any possible effect (positive or negative) is minimal.
+
+*Initial Hypothesis:* Physical activity does not significantly affect HbA1c.
+
+*Findings:* The effect is extremely small and not statistically significant (p\>0.05), supporting the null hypothesis.
+
+Adding covariates accounts for potential confounding variables (e.g., age, diabetes). This:
+
+-   Reduces bias by isolating the effect of physical activity on HbA1c.
+-   Leads to a smaller and still non-significant effect size, showing physical activity has a minimal independent impact.
+
+*Gender influence on the effect of physical activity on HbA1c*
+
+```{r gender influence}
+
+# Fit a model with an interaction term
+model_interaction <- glm(
+  HbA1c ~ Total_MET_Minutes * Gender,
+  data = df_clean,
+  family = "gaussian"
+)
+
+# Summarize the model
+summary(model_interaction)
+
+```
+
+Gender does not significantly modify this relationship, as the interaction term is not significant.
