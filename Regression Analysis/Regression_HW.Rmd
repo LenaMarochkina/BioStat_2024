@@ -9,7 +9,11 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(
+  warning = FALSE,
+  echo = FALSE,
+  message = FALSE
+)
 library(openxlsx)
 library(tidyverse)
 library(flextable)
@@ -17,7 +21,7 @@ library(officer)
 library(corrplot)
 library(fastDummies)
 library(gt)
-library(MASS)
+library(car)
 ```
 
 # 1. Read and prepare data
@@ -69,7 +73,7 @@ Vigorous Activity: 8 METs Moderate Activity: 4 METs Transportation (Walking/Bicy
 Based on clinical meaning the following covariates were choosen for further analysis:
 
 | **Covariate**       | **Explanation**                                                                                | **Variable** |
-|---------------------|------------------------------------------------------------------------------------------------|--------------|
+|------------------|-----------------------------------|------------------|
 | **Age**             | Participant's age in years, a critical factor influencing glycated hemoglobin (HbA1c) levels.  | `RIDAGEYR`   |
 | **Sex**             | Biological sex of the participant (male or female).                                            | `RIAGENDR`   |
 | **Race**            | Ethnic background to account for genetic and cultural differences in HbA1c levels.             | `RIDRETH3`   |
@@ -143,7 +147,7 @@ df_clean <- df %>%
     
     # Rename health variables
     Diabetes = DIQ010,
-    Hypertension = BPQ020,
+    Hypertension = BPQ020
 
   )  %>%
   mutate(
@@ -154,8 +158,7 @@ df_clean <- df %>%
   ) %>%
   select(
     Subject_ID, Total_MET_Minutes, Age, Gender, Race, Education, Income, Smoking_Status,
-    Alcohol_Intake, Sedentary_Minutes, HbA1c,
-    Diabetes, Hypertension
+    Alcohol_Intake, Sedentary_Minutes, HbA1c, Diabetes, Hypertension
   )
 
 
@@ -322,13 +325,13 @@ summary(model_with_covariates)
 # Create a data frame for significant predictors
 significant_predictors <- data.frame(
   Predictor = c("(Intercept)", "Total_MET_Minutes", "Age", "Diabetes", "Race_White"),
-  `p-value` = c("<0.001", "0.46", "<0.001", "<0.001", "0.014"),
+  `p-value` = c("<0.001", "0.76", "<0.001", "<0.001", "0.014"),
   Interpretation = c(
     "The baseline HbA1c when all predictors are at reference levels.",
     "No significant.",
-    "Each additional year of age increases HbA1c by 0.007, a modest but significant effect.",
-    "Having diabetes increases HbA1c by a substantial 1.49 units.",
-    "Being White is associated with a 0.224 decrease in HbA1c compared to the reference category."
+    "Each additional year of age increases HbA1c by 0.0075, a modest but significant effect.",
+    "Having diabetes increases HbA1c by a substantial 1.52 units.",
+    "Being White is associated with a 0.234 decrease in HbA1c compared to the reference category."
   )
 )
 
@@ -351,13 +354,12 @@ plot(model_no_covariates, which = 1:2, main = "Model Without Covariates")
 plot(model_with_covariates, which = 1:2, main = "Model With Covariates")
 
 # Check multicollinearity
-library(car)
 vif(model_with_covariates)
 ```
 
 **Model without covariates:** *Residuals vs. Fitted*
 
-The plot shows some clear patterns (curvature and fanning out at higher fitted values). This suggests non-linearity and heteroscedasticity in the model. Outliers are evident (e.g., points labeled 838, 586, 242).
+The plot shows some clear patterns (curvature and fanning out at higher fitted values). This suggests non-linearity and heteroscedasticity in the model. Outliers are evident (e.g., points labeled 838, 309, 887).
 
 *Q-Q Plot*
 
@@ -391,7 +393,7 @@ No multicollinearity concerns.
 df_clean$Log_HbA1c <- log(df_clean$HbA1c)
 
 # Identify and remove outliers
-df_clean <- df_clean[!(rownames(df_clean) %in% c(838, 586, 242)), ]
+df_clean <- df_clean[!(rownames(df_clean) %in% c(838, 309, 887)), ]
 
 # Refit models with log-transformed response
 model_no_covariates_after_transformations <- glm(HbA1c ~ Total_MET_Minutes, data = df_clean, family = "gaussian")
@@ -447,12 +449,12 @@ ci_with_cov <- confint(model_with_covariates_wts)["Total_MET_Minutes", ]
 results <- data.frame(
   Model = c("Without Covariates", "With Covariates"),
   `Point Estimate (β)` = c(
-    sprintf("%.3e", point_estimate_no_cov),
-    sprintf("%.3e", point_estimate_with_cov)
+    sprintf("%.6f", point_estimate_no_cov),
+    sprintf("%.6f", point_estimate_with_cov)
   ),
   `95% Confidence Interval` = c(
-    sprintf("[%.3e, %.3e]", ci_no_cov[1], ci_no_cov[2]),
-    sprintf("[%.3e, %.3e]", ci_with_cov[1], ci_with_cov[2])
+    sprintf("[%.6f, %.6f]", ci_no_cov[1], ci_no_cov[2]),
+    sprintf("[%.6f, %.6f]", ci_with_cov[1], ci_with_cov[2])
   ),
   Interpretation = c(
     "Effect not significant, small effect size.",
