@@ -1,0 +1,493 @@
+---
+title: "Статистический отчет"
+subtitle: "Проспективное, многоцентровое,  двойное слепое, плацебо-контролируемое рандомизированное клиническое исследование в параллельных группах, по сравнительной оценке, эффективности и безопасности препарата Malagueta (Capsicum frutescens L.), капли гомеопатические при лечении приливов у женщин в период менопаузы."
+version: "1.0"
+author: "Евгений Бердинских, Медер Иманалиев, Елена Марочкина, Анастасия Потамошнева"
+date: "`r Sys.Date()`"
+output: 
+  word_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  warning = FALSE,
+  echo = FALSE,
+  message = FALSE
+)
+library(dplyr)
+library(tidyverse)
+library(flextable)
+library(officer)
+library(ggplot2)
+library(readr)
+
+```
+
+\newpage
+
+```{r read data}
+df <- read.csv("team_4.csv") %>%
+  mutate(
+    across(
+      where(is.character),
+      as.factor
+    ),
+    across(c(V0_DEM_GEN, V1_NORM_ECG, V1_NORM_PHYS, V1_NORM_VIT, V2_NORM_ECG, V2_NORM_PHYS, V2_NORM_VIT), as.factor)
+    ) %>%
+  rename_with(function(x) x %>% 
+                str_remove("V0_") %>% 
+                str_remove("DEM_") %>% 
+                str_remove("CB_") %>% 
+                str_remove("NORM_") %>% 
+                str_replace("V1", "Визит 1") %>% 
+                str_replace("V2", "Визит 2") %>% 
+                str_replace("GRP", "Препарат") %>% 
+                str_replace("GEN", "Пол") %>% 
+                str_replace("AGE", "Возраст") %>% 
+                str_replace("WBC", "Лейкоциты, *10^9/л") %>% 
+                str_replace("RBC", "Эритроциты, *10^12/л") %>% 
+                str_replace("HGB", "Гемоглобин, г/л") %>% 
+                str_replace("HCT", "Гематокрит, %") %>% 
+                str_replace("PLT", "Тромбоциты, *10^9/л") %>% 
+                str_replace("NEUT.", "Нейтрофилы, *10^9/л") %>% 
+                str_replace("LYM.", "Лимфоциты, *10^9/л") %>% 
+                str_replace("MON.", "Моноциты, *10^9/л") %>% 
+                str_replace("EO.", "Эозинофилы, *10^9/л") %>%
+                str_replace("BAS.", "Базофилы, *10^9/л") %>%
+                str_replace("ECG", "ЭКГ") %>%
+                str_replace("PHYS", "Физикальный осмотр") %>%
+                str_replace("VIT", "Жизненно-важные показатели")) %>%
+  mutate(
+    across(`Пол`,
+      ~ factor(.x, levels = c(0, 1), labels = c("Женский", "Мужской"))),
+    across(`Препарат`,
+      ~ factor(.x, levels = c("T", "R"), labels = c("Malagueta", "Плацебо"))),
+    across(ends_with("ЭКГ"), 
+           ~ factor(.x, levels = c(0, 1, 2), labels = c("Норма", "Незначительное отклонение", "Значительное отклонение"))),
+    across(ends_with("Физикальный осмотр"), 
+           ~ factor(.x, levels = c(0, 1, 2), labels = c("Норма", "Незначительное отклонение", "Значительное отклонение"))),
+    across(ends_with("Жизненно-важные показатели"), 
+           ~ factor(.x, levels = c(0, 1, 2), labels = c("Норма", "Незначительное отклонение", "Значительное отклонение"))),
+    across(ends_with("Лейкоциты, *10^9/л"),
+           ~ factor(ifelse(.x >= 4.5 & .x <= 11, "Норма", "Отклонение"))),
+    across(ends_with("Эритроциты, *10^12/л"),
+          ~ factor(case_when(
+          "Возраст" >= 18 & "Возраст" < 45 & .x >= 3.8 & .x <= 5.1 ~ "Норма",
+          "Возраст" >= 45 & "Возраст" <= 65 & .x >= 3.8 & .x <= 5.3 ~ "Норма",
+          "Возраст" > 65 & .x >= 3.8 & .x <= 5.2 ~ "Норма",
+          TRUE ~ "Отклонение"))),
+    across(ends_with("Гемоглобин, г/л"),
+          ~ factor(case_when(
+          "Возраст" >= 18 & "Возраст" < 45 & .x >= 117 & .x <= 155 ~ "Норма",
+          "Возраст" >= 45 & "Возраст" <= 65 & .x >= 117 & .x <= 160 ~ "Норма",
+          "Возраст" > 65 & .x >= 117 & .x <= 161 ~ "Норма",
+          TRUE ~ "Отклонение"))),
+    across(ends_with("Гематокрит, %"),
+          ~ factor(case_when(
+          "Возраст" >= 18 & "Возраст" < 45 & .x >= 0.35 & .x <= 0.45 ~ "Норма",
+          "Возраст" >= 45 & "Возраст" <= 65 & .x >= 0.35 & .x <= 0.47 ~ "Норма",
+          "Возраст" > 65 & .x >= 0.35 & .x <= 0.47 ~ "Норма",
+          TRUE ~ "Отклонение"))),   
+    across(ends_with("Тромбоциты, *10^9/л"),
+           ~ factor(ifelse(.x >= 179 & .x <= 403, "Норма", "Отклонение"))),
+    across(ends_with("Нейтрофилы, *10^9/л"),
+           ~ factor(ifelse(.x >= 2.1 & .x <= 8.89, "Норма", "Отклонение"))),
+    across(ends_with("Лимфоциты, *10^9/л"),
+           ~ factor(ifelse(.x >= 1.26 & .x <= 3.35, "Норма", "Отклонение"))),
+    across(ends_with("Моноциты, *10^9/л"),
+           ~ factor(ifelse(.x >= 0.25 & .x <= 0.84, "Норма", "Отклонение"))),
+    across(ends_with("Эозинофилы, *10^9/л"),
+           ~ factor(ifelse(.x >= 0.01 & .x <= 0.4, "Норма", "Отклонение"))),
+    across(ends_with("Базофилы, *10^9/л"),
+           ~ factor(ifelse(.x >= 0.00 & .x <= 0.07, "Норма", "Отклонение"))),
+    
+  )
+
+```
+
+
+```{r inclusion criteria}
+# Delete all males from the study
+df_clean <- df %>%
+  filter(`Пол` == "Женский")
+
+# Check if all patients are older than 40 and younger than 60
+age_ok <- df_clean %>%
+  summarise(
+    min_age = min(`Возраст`),
+    max_age = max(`Возраст`)
+  )
+```
+
+# 1.  Демографичесие показатели
+## 1.1. Распределение пациентов по возрасту
+
+```{r demographic characteristics numeric vars}
+# Функция для расчета 95% ДИ для среднего
+ci_95 <- function(x) {
+  n <- sum(!is.na(x))
+  if (n < 3) return("Н/П*")
+  se <- sd(x, na.rm = TRUE) / sqrt(n)  # Standard Error
+  mean_x <- mean(x, na.rm = TRUE)
+  ci <- c(mean_x - 1.96 * se, mean_x + 1.96 * se)
+  paste0(round(ci[1], 2), " - ", round(ci[2], 2))
+}
+
+# Список описательных статистик
+statistics <- list(
+  `Количество значений` = ~as.character(sum(!is.na(.x))),
+  `Нет данных` = ~as.character(sum(is.na(.x))),
+  `Среднее` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", as.character(mean(.x, na.rm = TRUE) %>% round(2))),
+  `Медиана` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", as.character(median(.x, na.rm = TRUE) %>% round(2))),
+  `Станд. откл.` = ~ifelse(sum(!is.na(.x)) < 3, "Н/П*", as.character(sd(.x, na.rm = TRUE) %>% round(2))),
+  `Q1 - Q3` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", paste0(as.character(quantile(.x, 0.25, na.rm = TRUE) %>% round(2)), " - ", as.character(quantile(.x, 0.75, na.rm = TRUE) %>% round(2)))),
+  `IQR` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", as.character(IQR(.x, na.rm = TRUE) %>% round(2))),
+  `мин.` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", as.character(min(.x, na.rm = TRUE) %>% round(2))),
+  `макс.` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", as.character(max(.x, na.rm = TRUE) %>% round(2))),
+  `95% ДИ для среднего` = ~ci_95(.x)
+)
+
+df_clean %>%
+  select(`Препарат`, `Возраст`) %>%
+  group_by(`Препарат`) %>%
+  summarise(across(where(is.numeric), statistics, .names = "{.col}__{.fn}")) %>%
+  pivot_longer(!`Препарат`, names_sep = "__", 
+               names_to = c("Переменная", "Статистика")) %>%
+  rename(`Значение` = value) %>%
+  flextable() %>%
+  merge_v(c("Препарат", "Переменная")) %>%
+  autofit() %>%
+  align(align = "center", part = "all") %>%
+  set_table_properties(width = 0.9, layout = "autofit") %>%
+  border_inner(border = fp_border(color = "black", width = 1)) %>%
+  border_outer(border = fp_border(color = "black", width = 1))
+
+```
+
+\newpage
+
+## 1.2. Распределение пациентов по полу
+
+```{r demographic characteristics categorical vars}
+df_clean %>%
+  select(`Препарат`, `Пол`) %>%
+  mutate(across(where(is.factor), ~ as.character(.) %>% replace_na("Нет данных") %>% as.factor())) %>%
+  pivot_longer(-`Препарат`, names_to = "Переменная", values_to = "Значение") %>%
+  group_by(`Препарат`, Переменная, Значение) %>%
+  summarise(n = n(), .groups = 'drop') %>%
+  group_by(`Препарат`, Переменная) %>%
+  mutate(`Процент по группе` = paste0(round((n / sum(n)) * 100, 2), "%")) %>%
+  ungroup() %>%
+  select(`Препарат`, Переменная, Значение, n, `Процент по группе`) %>%
+  arrange(`Препарат`, Переменная, Значение) %>%
+  flextable() %>%
+  merge_v(c("Препарат", "Переменная")) %>%
+  autofit() %>%
+  align(align = "center", part = "all") %>%
+  set_table_properties(width = 0.9, layout = "autofit")  %>%
+  border_inner(border = fp_border(color = "black", width = 1)) %>%
+  border_outer(border = fp_border(color = "black", width = 1))
+```
+
+# 2. Клинический анализ крови
+
+```{r blood analysis}
+df_blood <- df_clean %>%
+  select(-c(`Пол`, `Возраст`, `Визит 1_MYMOP`, `Визит 2_MYMOP`, `Визит 1_ЭКГ`, `Визит 2_ЭКГ`, `Визит 1_Физикальный осмотр`, `Визит 2_Физикальный осмотр`, `Визит 1_Жизненно-важные показатели`, `Визит 1_Жизненно-важные показатели`))
+
+```
+
+## 2.1. Визит 1 и 2
+```{r blood analysis table}
+df_blood %>%
+  select(`Препарат`, starts_with("Визит")) %>%  # Выбор столбцов для анализа
+  pivot_longer(-`Препарат`,
+               names_to = "Показатель", 
+               values_to = "Значение") %>%  
+  mutate(Визит = gsub("Визит (\\d+)_.*", "Визит \\1", Показатель)) %>%  
+  mutate(Показатель = gsub("Визит \\d+_", "", Показатель)) %>%  
+  group_by(`Препарат`, Визит, `Показатель`, `Значение`) %>%
+  summarise(n = n(), .groups = 'drop') %>%  # Подсчет частоты значений
+  group_by(`Препарат`, Визит, `Показатель`) %>%
+  mutate(`Процент по группе` = paste0(round((n / sum(n)) * 100, 2), "%")) %>%  # Процент по визиту
+  ungroup() %>%
+  select(`Препарат`, Визит, Показатель, Значение, n, `Процент по группе`) %>% 
+  arrange(`Препарат`, Визит, `Показатель`, `Значение`) %>% 
+  flextable() %>%  
+  merge_v(c("Препарат", "Визит", "Показатель")) %>% 
+  autofit() %>%
+  align(align = "center", part = "all") %>%
+  set_table_properties(width = 0.9, layout = "autofit") %>%
+  border_inner(border = fp_border(color = "black", width = 1)) %>%
+  border_outer(border = fp_border(color = "black", width = 1))
+
+```
+
+\newpage
+
+# 3. ЭКГ
+```{r ECG}
+df_clean %>%
+  select(`Препарат`, ends_with("ЭКГ")) %>%
+  pivot_longer(-`Препарат`, names_to = "Показатель", values_to = "Значение") %>%
+  mutate(Визит = gsub("Визит (\\d+)_.*", "Визит \\1", Показатель)) %>%  
+  mutate(Показатель = gsub("Визит \\d+_", "", Показатель)) %>%  
+  group_by(`Препарат`, `Показатель`, `Значение`, Визит) %>%
+  summarise(n = n(), .groups = 'drop') %>%
+  group_by(`Препарат`, Визит, `Показатель`) %>%
+  mutate(`Процент по группе` = paste0(round((n / sum(n)) * 100, 2), "%")) %>%
+  ungroup() %>%
+  select(`Препарат`, Визит, `Показатель`, `Значение`, n, `Процент по группе`) %>%
+  arrange(`Препарат`, Визит, `Показатель`, `Значение`) %>%
+  flextable() %>%
+  merge_v(c("Препарат", "Визит", "Показатель")) %>%
+  autofit() %>%
+  align(align = "center", part = "all") %>%
+  set_table_properties(width = 0.9, layout = "autofit") %>%
+  border_inner(border = fp_border(color = "black", width = 1)) %>%
+  border_outer(border = fp_border(color = "black", width = 1))
+
+```
+
+# 4. Оценка жизненно важных показателей
+```{r vital signs}
+
+df_clean %>%
+  select(`Препарат`, ends_with("Жизненно-важные показатели")) %>%
+  pivot_longer(-`Препарат`, names_to = "Показатель", values_to = "Значение") %>%
+  mutate(Визит = gsub("Визит (\\d+)_.*", "Визит \\1", Показатель)) %>%  
+  mutate(Показатель = gsub("Визит \\d+_", "", Показатель)) %>%  
+  group_by(`Препарат`, `Показатель`, `Значение`, Визит) %>%
+  summarise(n = n(), .groups = 'drop') %>%
+  group_by(`Препарат`, Визит, `Показатель`) %>%
+  mutate(`Процент по группе` = paste0(round((n / sum(n)) * 100, 2), "%")) %>%
+  ungroup() %>%
+  select(`Препарат`, Визит, `Показатель`, `Значение`, n, `Процент по группе`) %>%
+  arrange(`Препарат`, Визит, `Показатель`, `Значение`) %>%
+  flextable() %>%
+  merge_v(c("Препарат", "Визит", "Показатель")) %>%
+  autofit() %>%
+  align(align = "center", part = "all") %>%
+  set_table_properties(width = 0.9, layout = "autofit") %>%
+  border_inner(border = fp_border(color = "black", width = 1)) %>%
+  border_outer(border = fp_border(color = "black", width = 1))
+
+```
+
+# 5. Физикальный осмотр
+
+```{r physical examination}
+
+df_clean %>%
+  select(`Препарат`, ends_with("Физикальный осмотр")) %>%
+  pivot_longer(-`Препарат`, names_to = "Показатель", values_to = "Значение") %>%
+  mutate(Визит = gsub("Визит (\\d+)_.*", "Визит \\1", Показатель)) %>%  
+  mutate(Показатель = gsub("Визит \\d+_", "", Показатель)) %>%  
+  group_by(`Препарат`, `Показатель`, `Значение`, Визит) %>%
+  summarise(n = n(), .groups = 'drop') %>%
+  group_by(`Препарат`, Визит, `Показатель`) %>%
+  mutate(`Процент по группе` = paste0(round((n / sum(n)) * 100, 2), "%")) %>%
+  ungroup() %>%
+  select(`Препарат`, Визит, `Показатель`, `Значение`, n, `Процент по группе`) %>%
+  arrange(`Препарат`, Визит, `Показатель`, `Значение`) %>%
+  flextable() %>%
+  merge_v(c("Препарат", "Визит", "Показатель")) %>%
+  autofit() %>%
+  align(align = "center", part = "all") %>%
+  set_table_properties(width = 0.9, layout = "autofit") %>%
+  border_inner(border = fp_border(color = "black", width = 1)) %>%
+  border_outer(border = fp_border(color = "black", width = 1))
+
+```
+
+# 6. Оценка эффективности
+
+```{r efficacy}
+data <- df %>% 
+  filter( 
+    # Только Женщины в возрасте от 40 до 60 лет с корректными значениями из опросника MYMOP
+    `Пол` == "Женский",  
+    between(`Возраст`, 40, 60),
+    between(`Визит 1_MYMOP`, 0, 6), 
+    between(`Визит 2_MYMOP`, 0, 6) 
+  ) %>% 
+  transmute(
+    Treatment = factor(`Препарат`, levels = c("Malagueta", "Плацебо"), labels = c("Malagueta", "Плацебо")), 
+    MYMOP_Change = `Визит 2_MYMOP` - `Визит 1_MYMOP`
+  )
+
+superiority_margin <- -1.14
+  
+endpoint <- t.test(MYMOP_Change ~ Treatment, data = data, 
+         alternative = "less", mu = superiority_margin,
+         conf.level = 0.975, var.equal = TRUE)
+
+# Расчет среднего изменения MYMOP для каждой группы
+group_means <- data %>%
+  group_by(Treatment) %>%
+  summarise(Average_MYOP_Change = round(mean(MYMOP_Change), 3), .groups = "drop")
+
+# Извлечение ключевых метрик из результата Malaguetaа
+results_table <- data.frame(
+  `Показатель` = c("Среднее значение Malagueta", 
+                   "Среднее значение Плацебо", 
+                   "Средняя разница", 
+                   "Нижняя граница доверительного интервала", 
+                   "Верхняя граница доверительного интервала",
+                   "Порог превосходства",
+                   "p-значение"),
+  `Значение` = c(
+    group_means$Average_MYOP_Change[group_means$Treatment == "Malagueta"],  # Среднее Malagueta
+    group_means$Average_MYOP_Change[group_means$Treatment == "Плацебо"],   # Среднее Плацебо
+    round(diff(endpoint$estimate), 3),  # Средняя разница между группами
+    round(endpoint$conf.int[1], 3),     # Нижняя граница доверительного интервала
+    round(endpoint$conf.int[2], 3),     # Верхняя граница доверительного интервала
+    superiority_margin,                  # Порог превосходства
+    round(endpoint$p.value, 4)         # p-значение
+  )
+)
+
+# Оформление таблицы с использованием flextable
+results_table %>%
+  flextable() %>%
+  autofit() %>%
+  set_table_properties(width = 0.9, layout = "autofit") %>%
+  add_header_row(values = "Результаты анализа превосходства", colwidths = 2) %>%
+  align(align = "center", part = "header") %>%
+  border_inner(border = fp_border(color = "black", width = 1)) %>%
+  border_outer(border = fp_border(color = "black", width = 1))
+
+```
+
+**Превосходство не подтверждено**: 
+
+Правая граница одностороннего 97.5% доверительного интервала для разницы средних значений между группами составляет 0.25. Это означает, что разница в снижении баллов тяжести приливов между группами препарата Malagueta и плацебо не превышает установленного порога превосходства -1.14, и мы не можем отвергнуть нулевую гипотезу о том, что препарат Malagueta не имеет значимого превосходства над плацебо.
+
+# 7. Оценка безопасности
+
+Оценка безопасности по каждому параметру клинического анализа крови
+
+```{r safety by each parameter}
+groups_total <- df_clean %>%
+  count(`Препарат`, name = "Всего")
+
+adverse_effects_vars <- df_clean  %>% 
+  select("Препарат", "Визит 2_Лейкоциты, *10^9/л", "Визит 2_Эритроциты, *10^12/л", 
+                       "Визит 2_Гемоглобин, г/л", "Визит 2_Гематокрит, %", 
+                       "Визит 2_Тромбоциты, *10^9/л", "Визит 2_Нейтрофилы, *10^9/л", 
+                       "Визит 2_Лимфоциты, *10^9/л", "Визит 2_Моноциты, *10^9/л", 
+                       "Визит 2_Эозинофилы, *10^9/л", "Визит 2_Базофилы, *10^9/л") 
+adverse_effects_vars %>%
+  pivot_longer(
+    -`Препарат`,
+    names_to = "Показатель",
+    values_to = "Значение"
+  ) %>%
+  mutate(Визит = gsub("Визит (\\d+)_.*", "Визит \\1", Показатель)) %>%  
+  mutate(Показатель = gsub("Визит \\d+_", "", Показатель)) %>%  
+  filter(`Значение` == "Отклонение") %>%
+  group_by(Визит, `Показатель`, `Препарат`) %>%
+  summarise(`Количество` = n(), .groups = "drop") %>%
+  pivot_wider(
+    names_from = `Препарат`,
+    values_from = `Количество`,
+    values_fill = 0
+  ) %>%
+  rowwise() %>%
+  mutate(
+    `p-value` = round(chisq.test(c_across(c(`Malagueta`, `Плацебо`)))$p.value,3)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    Malagueta = paste0(`Malagueta`, " (", round(`Malagueta` / sum(`Malagueta`, na.rm = TRUE) * 100, 1), "%)"),
+    Плацебо = paste0(`Плацебо`, " (", round(`Плацебо` / sum(`Плацебо`, na.rm = TRUE) * 100, 1), "%)")
+  ) %>%
+  select(Визит, `Показатель`, `Malagueta`, `Плацебо`, `p-value`) %>%
+  flextable() %>%
+  theme_box() %>%
+  autofit() %>%
+  merge_v("Визит") %>%
+  align(align = "center", part = "all") 
+
+```
+
+Оценка безопасности по суммарному количеству отклонений в клиническом анализе крови.
+
+```{r safety}
+# Calculate counts of "Отклонение" for Test and Placebo
+ubnormal_T <- df_blood %>%
+  filter(`Препарат` == "Malagueta") %>%
+  select(ID, `Препарат`, starts_with("Визит 2")) %>%
+  pivot_longer(cols = -c(`Препарат`, ID), 
+               names_to = "Показатель", 
+               values_to = "Значение") %>%
+  filter(Значение == "Отклонение") %>%
+  nrow()
+
+ubnormal_R <- df_blood %>%
+  filter(`Препарат` == "Плацебо") %>%
+  select(ID, `Препарат`, starts_with("Визит 2")) %>%
+  pivot_longer(cols = -c(`Препарат`, ID), 
+               names_to = "Показатель", 
+               values_to = "Значение") %>%
+  filter(Значение == "Отклонение") %>%
+  nrow()
+
+# Total possible observations (total number of measurements per group)
+total_T <- df_blood %>%
+  filter(`Препарат` == "Malagueta") %>%
+  select(ID, `Препарат`, starts_with("Визит 2")) %>%
+  pivot_longer(cols = -c(`Препарат`, ID), 
+               names_to = "Показатель", 
+               values_to = "Значение") %>%
+  nrow()
+
+total_R <- df_blood %>%
+  filter(`Препарат` == "Плацебо") %>%
+  select(ID, `Препарат`, starts_with("Визит 2")) %>%
+  pivot_longer(cols = -c(`Препарат`, ID), 
+               names_to = "Показатель", 
+               values_to = "Значение") %>%
+  nrow()
+
+# Create a contingency table
+contingency_table <- matrix(
+  c(ubnormal_T, total_T - ubnormal_T, ubnormal_R, total_R - ubnormal_R),
+  nrow = 2,
+  byrow = TRUE,
+  dimnames = list(
+    Group = c("Malagueta", "Плацебо"),
+    Outcome = c("Отклонение", "Норма")
+  )
+)
+
+# Perform Chi-squared test
+chi_squared_result <- chisq.test(contingency_table)
+
+# Prepare detailed results for the table
+detailed_table <- data.frame(
+  `Препарат` = c("Malagueta", "Плацебо"),
+  `Число НЯ` = c(ubnormal_T, ubnormal_R),
+  `Процент НЯ` = paste0(round(c((ubnormal_T / total_T) * 100, (ubnormal_R / total_R) * 100), 2), "%"),
+  `p-value` = round(chi_squared_result$p.value, 4)
+) 
+  
+detailed_table %>%
+  rename(
+    `Число НЯ` = `Число.НЯ`,
+    `Процент НЯ` = `Процент.НЯ`,
+    `p-value (Chi square)` = `p.value`
+  ) %>%
+  flextable() %>%
+  autofit() %>%
+  align(align = "center", part = "all") %>%
+  set_table_properties(width = 0.9, layout = "autofit") %>%
+  merge_v("p-value") %>%  # Объединение ячеек в столбце p-value
+  border_inner(border = fp_border(color = "black", width = 1)) %>%
+  border_outer(border = fp_border(color = "black", width = 1))
+
+```
+
+Частота нежелательных явлений (НЯ) в группе "Malagueta" составила 15.4% (1,882 случая), а в группе "Плацебо" — 14.95% (1,827 случаев). Различия между группами статистически незначимы (p=0.3357), что свидетельствует об отсутствии существенного влияния препарата "Malagueta" на частоту НЯ по сравнению с плацебо.
