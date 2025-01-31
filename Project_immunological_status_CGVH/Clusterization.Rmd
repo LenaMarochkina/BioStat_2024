@@ -1,0 +1,542 @@
+---
+title: "Study of the predictive ability of immunological status and clustering features on the development of chronic graft-versus-host disease after allogeneic hematopoietic stem cell transplantation."
+author: "Elena Marochkina"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, echo = TRUE)
+```
+
+```{r libraries}
+library(dplyr)
+library(stringr)
+library(tidyr)
+library(flextable)
+library(officer)
+library(tibble)
+library(ggplot2)
+library(reshape2)
+library(pheatmap)
+library(caret)
+library(corrplot)
+library(randomForestSRC)
+library(survival)
+library(Boruta)
+```
+
+# 1. Read and Clean Data
+
+```{r clean data}
+# Read data and rename columns
+df <- read.csv("../../raw_data/AI_Tcells_для ЕА - Sheet1.csv")
+
+# Check duplicates
+duplicates <- df %>%
+  group_by(ID, Time_OS, cGVHD_time, Names) %>%
+  filter(n() > 1) %>%
+  ungroup()  
+
+# Clean the data 
+df_clean <- df %>%
+  mutate(
+    Abs_Value = as.numeric(str_replace_all(Abs_Value, ",", ".")),
+    Abs_Value = as.numeric(Abs_Value)) %>%
+  # Rename columns
+  rename(
+    Subject_ID = ID,
+    Observation_Days_Count = Time_OS,
+    cGVHD_Diagnosis_Day = cGVHD_time,
+    Cell_Count = Abs_Value
+  ) %>%
+  mutate(
+    # Add flag to indicate which patients experienced cGVHD
+    cGVHD_flag = as.numeric(ifelse(!is.na(cGVHD_Diagnosis_Day), 1, 0)),
+    Subject_ID = as.factor(Subject_ID),
+    
+    # Add blood test group 
+    Blood_test_day = case_when(
+      grepl('ДЕНЬ ХРРТПХ_ПЕР.КРОВЬ', df$Names) ~ "cGVHD",
+      grepl('ДЕНЬ ХРРТПХ +', df$Names) ~ paste0(str_extract(df$Names, "(?<=\\+)\\d+(?=_)"), "_cGVHD"),
+      TRUE ~ str_extract(df$Names, "(?<=\\+)\\d+(?=_)")
+    ),
+    
+    # Create exact cell name
+    Cell_name = str_extract(Names, "(?<=/).*")
+  ) %>%
+  select(-Names)
+
+unify_cell_name <- function(cell_name, replacements) {
+  cell_name_unified <- cell_name
+  for (replacement in replacements) {
+    old_value <- replacement[1]
+    new_value <- replacement[2]
+    
+    old_value <- str_replace_all(old_value, "([\\+\\*\\?\\|\\(\\)\\[\\]\\{\\}\\^\\$\\.])", "\\\\\\1")
+    cell_name_unified <- str_replace_all(cell_name_unified, old_value, new_value)
+  }
+  return(cell_name_unified)
+}
+
+replacements <- list(
+  c("PD1", "PD-1"),
+  c("СТАР2", "STAR2"),
+  c("4", "CD4_"),
+  c("CD4_+", "CD4+_"),
+  c("8", "CD8_"),
+  c("CD8_+", "CD8+_"),
+  c("Th", "TH"),
+  c("__", "_"),
+  c("_ ", "_")
+)
+
+# Apply the function to dataframe
+df_clean <- df_clean %>%
+  mutate(
+    Cell_name_unified = Cell_name,
+    Cell_name_unified = unify_cell_name(Cell_name, replacements)
+    )
+
+# Check for duplicates for control 
+duplicates <- df_clean %>%
+  group_by(Subject_ID, Observation_Days_Count, cGVHD_Diagnosis_Day, cGVHD_flag, Blood_test_day, Cell_name) %>%
+  filter(n() > 1) %>%
+  ungroup() 
+
+# Check the unique cells name 
+unique_cells_name <- unique(df_clean$Cell_name_unified)
+print(unique_cells_name)
+
+rm(duplicates, replacements, unify_cell_name)
+```
+
+**Crucial steps:**
+
+1.  cGVHD Flag: Adds a flag (cGVHD_flag) to indicate if a patient experienced chronic GVHD (1 if cGVHD_Diagnosis_Day is not NA, otherwise 0).
+2.  Blood Test Timing: classifies the blood test timing into groups (e.g., cGVHD, +30_cGVHD).
+3.  Cell Name Parsing: Extracts the exact immune cell name from the Names column.
+4.  Defines a function unify_cell_name to standardize cell names using a list of replacements (e.g., PD1 -\> PD-1, 4 -\> CD4\_).
+
+## 1.1. Rearrange Data
+
+```{r rearrange data}
+
+# Check the number of unique days
+unique_days <- unique(df_clean$Blood_test_day)
+print(unique_days)
+
+# Transform the dataframe
+df_transformed <- df_clean %>%
+  group_by(Subject_ID, Blood_test_day) %>%
+  pivot_wider(
+    id_cols = c(Subject_ID, Observation_Days_Count, cGVHD_Diagnosis_Day, cGVHD_flag, Blood_test_day),
+    names_from = Cell_name_unified,
+    values_from = Cell_Count,
+    values_fill = list(Cell_Count = NA)
+  ) %>%
+  ungroup()
+
+# Check if in any cell contain more than 1 number
+multi_value_cells <- apply(df_transformed, 2, function(column) {
+  any(grepl(",", column, fixed = TRUE) | grepl(" ", column))
+})
+
+contains_multiple_values <- ifelse(any(multi_value_cells), "Yes", "No")
+print(contains_multiple_values)
+
+rm(unique_days, contains_multiple_values)
+```
+
+**Crucial steps:**
+
+1.  Reshape the data, creating separate columns for each combination of Cell_name_unified and Blood_test_day. Missing values are filled with NA.
+2.  Checks if any transformed cell contains multiple values
+3.  Randomly selects a patient and compares their raw Cell_Count data.
+
+# 2. Prediction of cGVHD outcome
+
+## 2.1. Define DataSet
+
+Survival Analysis are planned.
+
+*Event:* Diagnosis of cGVHD (cGVHD_flag == 1).
+
+*Survival Time:*
+
+-   For patients with cGVHD: cGVHD_Diagnosis_Day as the survival time.
+-   For patients without cGVHD: Observation_Days_Count as the censored survival time.
+
+*Perform PCA to reduce 167 variables into fewer components that explain the maximum variance!*
+
+```{r define dataset Prediction of cGVHD outcome}
+
+# Select days of interest
+df_cGVHD_prediction <- df_transformed %>%
+  filter(Blood_test_day %in% c("90", "180", "365", "cGVHD")) 
+
+
+```
+
+## 2.2. Check for Missing Data
+
+```{r check for missing data}
+# Calculate missing values by Blood_test_day
+missing_summary <- df_cGVHD_prediction %>%
+  group_by(Blood_test_day) %>%
+  summarise(across(everything(), ~ mean(is.na(.)) * 100)) %>%
+  pivot_longer(cols = -Blood_test_day, names_to = "Column", values_to = "Missing_Percentage")
+```
+
+**Crucial steps:**
+
+1.  No missing values by Blood test day were identified for any cell name.
+
+## 2.3. Visualisation
+
+### 2.3.1. Correlation martrix
+
+```{r correlation matrix}
+# Select relevant numeric columns 
+correlation_data <- df_cGVHD_prediction %>%
+  filter(Blood_test_day %in% c("90")) %>%
+  filter(cGVHD_Diagnosis_Day > 90 | is.na(cGVHD_Diagnosis_Day)) %>%
+  select(where(is.numeric))
+
+cor_matrix <- cor(correlation_data, use = "complete.obs")
+
+# Mask weak correlations
+cor_matrix[abs(cor_matrix) < 0.5] <- NA
+
+# Plot strong correlations
+corrplot(cor_matrix, 
+         method = "color", 
+         type = "lower", 
+         tl.col = "black", 
+         tl.srt = 45, 
+         number.cex = 0.1, 
+         addCoef.col = "black", 
+         mar = c(2, 2, 2, 2),
+         cl.cex = 0.5,        
+         tl.cex = 0.15)
+
+correlation_table <- as.data.frame(as.table(cor_matrix))
+
+colnames(correlation_table) <- c("Variable1", "Variable2", "Correlation")
+
+# Filter for correlations >= 0.9
+filtered_table <- correlation_table %>%
+  filter(Correlation >= 0.9 & Variable1 != Variable2)
+
+# Ensure no duplicate pairs
+filtered_table <- filtered_table %>%
+  mutate(
+    Pair = paste0(pmin(Variable1, Variable2), "-", pmax(Variable1, Variable2))) %>%
+  distinct(Pair, .keep_all = TRUE) %>%
+  select(-Pair) %>%
+  arrange(desc(Correlation)) %>%
+  mutate(Num = row_number())
+
+print(filtered_table)
+
+# Check correlations for 'cGVHD_Diagnosis_Day' >= 0.6
+cgvhd_filtered_table <- correlation_table %>%
+  filter(
+    (Variable1 == "cGVHD_Diagnosis_Day") &
+    Correlation > 0.6 & 
+    (Variable1 != Variable2)
+  ) %>%
+  arrange(desc(Correlation)) %>%
+  mutate(Num = row_number())
+
+# Print the filtered table
+print(cgvhd_filtered_table)
+
+```
+
+-   In linear regression or logistic regression, multicollinearity makes it difficult to determine the unique contribution of each predictor variable.
+
+Models that are not sensitive to multicollinearity because they split the data hierarchically:
+
+-   *Random Forest:*
+-   *XGBoost*
+
+### 2.3.2. Heatmap with clusters
+
+```{r visualisation heatmap with clusters all data}
+
+correlation_data <- df_cGVHD_prediction %>%
+  filter(Blood_test_day %in% c("90")) %>%
+  filter(cGVHD_Diagnosis_Day > 90 | is.na(cGVHD_Diagnosis_Day)) %>%
+  select(where(is.numeric), -cGVHD_Diagnosis_Day)
+
+cor_matrix <- cor(correlation_data, use = "complete.obs")
+
+# Hierarchical clustering and heatmap
+pheatmap(cor_matrix,
+         cluster_rows = TRUE,
+         cluster_cols = TRUE,
+         display_numbers = FALSE,
+         fontsize_row = 2,
+         fontsize_col = 2,
+         main = "Clustered Heatmap for Survival Variables",
+         width = 20, 
+        height = 20  )
+
+
+# Perform hierarchical clustering
+distance_matrix <- as.dist(1 - cor_matrix) 
+hclust_result <- hclust(distance_matrix, method = "ward.D2") # Ward's method
+
+# Cut the dendrogram into clusters
+clusters <- cutree(hclust_result, k = 6)
+
+clustered_data <- data.frame(
+  Variable = rownames(cor_matrix),
+  Cluster = clusters
+)
+
+# Dendrogram with clusters
+plot(hclust_result, labels = rownames(cor_matrix), main = "Dendrogram of Clusters", cex = 0.2)
+
+# Add rectangles
+rect.hclust(hclust_result, k = 6, border = 2:6)
+
+```
+
+```{r }
+custom_order <- c("90", "180", "365", "cGVHD")
+
+# Convert Blood_test_day to a factor with the custom order
+df_cGVHD_transformed <- df_cGVHD_prediction %>%
+  mutate(Blood_test_day = factor(Blood_test_day, levels = custom_order))
+
+# Arrange data by the specified order of Blood_test_day
+df_cGVHD_transformed <- df_cGVHD_transformed %>%
+  arrange(Blood_test_day)
+
+# Aggregate data by Blood_test_day
+heatmap_data <- df_cGVHD_transformed %>%
+  group_by(Blood_test_day) %>%
+  summarise(across(where(is.numeric), mean, na.rm = TRUE)) %>%
+  ungroup()
+
+# Convert to matrix for heatmap plotting
+heatmap_matrix <- heatmap_data %>%
+  column_to_rownames("Blood_test_day") %>%
+  as.matrix()
+
+# Create the heatmap
+pheatmap(heatmap_matrix,
+         cluster_rows = FALSE,
+         cluster_cols = TRUE,
+         display_numbers = FALSE,
+         fontsize_row = 6,
+         fontsize_col = 3,
+         main = "Heatmap: Variable Distribution by Blood Test Day")
+
+```
+
+Some variable distributions seem to change over time (Blood Test Day), with certain groups (e.g., those in warmer tones) showing higher activity at specific days, such as 365 (for non-log-transformed data).
+
+### 2.3.3. PCA
+
+```{r PCA}
+
+# Filter and normalize data while preserving cGVHD_flag
+df_normalized <- df_transformed %>%
+  filter(Blood_test_day %in% c("90")) %>%
+  filter(cGVHD_Diagnosis_Day > 90 | is.na(cGVHD_Diagnosis_Day)) %>%
+  # Ensure cGVHD_flag is retained for later use
+  select(cGVHD_flag, where(is.numeric), -Observation_Days_Count, -cGVHD_Diagnosis_Day) %>%
+  # Apply log transformation only to numeric columns excluding cGVHD_flag
+  mutate(across(-cGVHD_flag, ~ log(. + 1))) %>%
+  # Scale numeric columns (excluding cGVHD_flag) to have zero mean and unit variance
+  mutate(across(starts_with("log_"), ~ (.-mean(.)) / sd(.)))
+
+# Save cGVHD_flag for later use
+cGVHD_flags <- df_normalized$cGVHD_flag
+
+# Perform near-zero variance filtering (excluding cGVHD_flag)
+nzv <- nearZeroVar(df_normalized %>% select(-cGVHD_flag))
+df_filtered <- df_normalized %>%
+  select(-nzv, cGVHD_flag) %>% # Retain cGVHD_flag after filtering
+  filter(complete.cases(.))
+
+# Perform PCA (exclude cGVHD_flag from PCA computation)
+pca_results <- prcomp(df_filtered %>% select(-cGVHD_flag), scale. = TRUE)
+
+# Attach PCA scores and cGVHD_flag back together
+pca_scores <- as.data.frame(pca_results$x) %>%
+  mutate(cGVHD_flag = cGVHD_flags)
+
+# Explained variance calculations
+explained_variance <- pca_results$sdev^2 / sum(pca_results$sdev^2)
+cumulative_variance <- cumsum(explained_variance)
+
+# Create a data frame for plotting explained variance
+explained_variance_data <- data.frame(
+  PC = 1:length(explained_variance),
+  Explained_Variance = explained_variance,
+  Cumulative_Variance = cumulative_variance
+)
+
+# Filter for components contributing to the first 80% of cumulative variance
+explained_variance_data_filtered <- explained_variance_data %>%
+  filter(Cumulative_Variance <= 0.8)
+
+# Add percentage labels for explained variance
+explained_variance_data_filtered <- explained_variance_data_filtered %>%
+  mutate(Variance_Percentage_Label = paste0(round(Explained_Variance * 100, 2), "%"))
+
+# Plot explained variance with percentage labels
+ggplot(explained_variance_data_filtered, aes(x = PC)) +
+  geom_bar(aes(y = Explained_Variance), stat = "identity", fill = "steelblue") +
+  geom_text(aes(y = Explained_Variance, label = Variance_Percentage_Label), 
+            vjust = -0.5, size = 3.5) +
+  geom_line(aes(y = Cumulative_Variance), color = "red", size = 1) +
+  geom_point(aes(y = Cumulative_Variance), color = "red", size = 2) +
+  scale_y_continuous(
+    name = "Variance Explained",
+    sec.axis = sec_axis(~., name = "Cumulative Variance Explained")
+  ) +
+  labs(
+    title = "Explained Variance by Principal Components (First 80%)",
+    x = "Principal Component"
+  ) +
+  theme_minimal(base_size = 14)
+
+# Perform clustering on PCA scores
+set.seed(123)
+wss <- sapply(1:10, function(k) {
+  kmeans(pca_scores[, 1:10], centers = k, nstart = 25)$tot.withinss
+})
+
+# Plot Elbow Method
+elbow_plot <- data.frame(Clusters = 1:10, WSS = wss)
+ggplot(elbow_plot, aes(x = Clusters, y = WSS)) +
+  geom_line() +
+  geom_point(size = 3) +
+  labs(
+    title = "Elbow Method for Optimal Clusters",
+    x = "Number of Clusters",
+    y = "Total Within-Cluster Sum of Squares (WSS)"
+  ) +
+  theme_minimal(base_size = 14)
+
+# Apply K-means clustering
+optimal_clusters <- 4
+kmeans_result <- kmeans(pca_scores[, 1:10], centers = optimal_clusters, nstart = 25)
+pca_scores$Cluster <- as.factor(kmeans_result$cluster)
+
+# Visualize clusters with coloring by cGVHD_flag
+ggplot(pca_scores, aes(x = PC1, y = PC2, color = as.factor(cGVHD_flag))) +
+  geom_point(size = 2, alpha = 0.8) +  # Scatterplot of PCA points
+  stat_ellipse(aes(group = Cluster), type = "t", linetype = "dashed", size = 0.5, color = "black") +  # Ellipses for clusters
+  scale_color_brewer(palette = "Set1") +  
+  labs(
+    title = "PCA Clusters with cGVHD flag",
+    x = "PC1 (Principal Component 1)",
+    y = "PC2 (Principal Component 2)",
+    color = "cGVHD_flag"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(face = "bold", hjust = 0.5)
+  )
+
+
+```
+
+### 2.3.4. MDS
+
+```{r MDS}
+
+# Compute distance matrix (Euclidean distance in this case)
+distance_matrix <- dist(df_filtered %>% select(-cGVHD_flag))
+
+# Perform Multidimensional Scaling (MDS)
+mds_results <- cmdscale(distance_matrix, k = 2) # k = 2 for 2D projection
+
+# Convert MDS results to a data frame
+mds_df <- as.data.frame(mds_results)
+colnames(mds_df) <- c("MDS1", "MDS2")
+
+# Add cluster information and cGVHD_flag to the MDS data
+mds_df$Cluster <- as.factor(kmeans_result$cluster)
+mds_df$cGVHD_flag <- df_filtered$cGVHD_flag
+
+# Ensure Cluster is a factor
+# Ensure Cluster and cGVHD_flag are factors
+mds_df$Cluster <- as.factor(mds_df$Cluster)
+mds_df$cGVHD_flag <- as.factor(mds_df$cGVHD_flag)
+
+# Plot the MDS results
+# Scale the y-axis by focusing on a tighter range or applying a log transformation
+ggplot(mds_df, aes(x = MDS1, y = MDS2, shape = Cluster, color = cGVHD_flag)) +
+  geom_point(size = 3, alpha = 0.8, position = position_jitter(width = 0.2, height = 0.2)) +
+  scale_color_manual(values = c("red", "blue")) +
+  stat_ellipse(aes(group = Cluster), type = "norm", linetype = "dashed", size = 0.5) +
+  labs(
+    title = "MDS Plot with Clusters and cGVHD flag",
+    x = "MDS Dimension 1",
+    y = "MDS Dimension 2",
+    color = "cGVHD flag",
+    shape = "Cluster"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    panel.grid.major = element_line(color = "gray", size = 0.5, linetype = "dotted")
+  )
+
+```
+
+Points belonging to different clusters (represented by shapes) are overlapping, particularly in the region close to the origin, indicating proximity in the MDS dimensions. Some points are further apart from the main cluster, such as the red circular points near the top-left, which could represent potential outliers. Flag-Based Separation:
+
+The color-coded cGVHD_flag (red for 0, blue for 1) shows some separation within clusters, with a mix of both flags in the same region, implying limited distinction between flags in these dimensions.
+
+#### 2.3.4.1. isoMDS
+
+```{r isoMDS}
+# Perform isoMDS (Non-metric MDS)
+iso_mds_results <- MASS::isoMDS(distance_matrix, k = 2) # k = 2 for 2D projection
+
+# Convert isoMDS results to a data frame
+iso_mds_df <- as.data.frame(iso_mds_results$points)
+colnames(iso_mds_df) <- c("MDS1", "MDS2")
+
+# Add cluster information and cGVHD_flag
+iso_mds_df$Cluster <- as.factor(kmeans_result$cluster)
+iso_mds_df$cGVHD_flag <- df_filtered$cGVHD_flag
+
+# Convert cGVHD_flag to a factor
+iso_mds_df$cGVHD_flag <- as.factor(iso_mds_df$cGVHD_flag)
+
+# Filter out clusters with fewer than 3 points (needed for ellipse calculation)
+iso_mds_df_filtered <- iso_mds_df %>%
+  group_by(Cluster) %>%
+  filter(n() >= 3) %>%
+  ungroup()
+
+# Plot the isoMDS results with ellipses and adjusted axis scales
+ggplot(iso_mds_df_filtered, aes(x = MDS1, y = MDS2, shape = Cluster, color = cGVHD_flag)) +
+  geom_point(size = 3, alpha = 0.8) +
+  scale_color_manual(values = c("red", "blue")) + # Define colors for cGVHD_flag
+  stat_ellipse(aes(group = Cluster), type = "norm", linetype = "dashed", size = 0.5) + # Add ellipses
+  labs(
+    title = "isoMDS Plot with Clusters and cGVHD flag",
+    x = "isoMDS Dimension 1",
+    y = "isoMDS Dimension 2",
+    color = "cGVHD_flag",
+    shape = "Cluster"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    panel.grid.major = element_line(color = "gray", size = 0.5, linetype = "dotted")
+  )
+```
